@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>石庭 — 岩置きMRシミュレーター</title>
+<title>石庭 — 造園MRシミュレーター</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
@@ -36,7 +36,7 @@
   }
   #panel{
     pointer-events:auto;
-    width:min(430px, 100%);
+    width:min(440px, 100%);
     height:100%;
     overflow-y:auto;
     background:linear-gradient(105deg, rgba(234,231,220,.97) 78%, rgba(234,231,220,.86));
@@ -56,9 +56,7 @@
     display:block; font-size:13px; font-weight:500;
     color:var(--ink-soft); letter-spacing:.14em; margin-top:8px;
   }
-  .ripple{
-    margin:18px 0 6px;
-  }
+  .ripple{ margin:18px 0 6px; }
   .lead{
     font-size:13px; line-height:1.9; color:var(--ink-soft);
     margin-bottom:22px;
@@ -66,7 +64,7 @@
   #support{
     font-size:12px; padding:9px 12px; border-radius:4px;
     background:var(--washi-deep); color:var(--ink-soft);
-    margin-bottom:22px; line-height:1.6;
+    margin-bottom:22px; line-height:1.7;
   }
   #support.ok{ background:#E3E9DB; color:var(--moss-deep); }
   #support.ng{ background:#EBDCD4; color:#7A4634; }
@@ -79,22 +77,26 @@
   }
   h2::after{ content:""; flex:1; height:1px; background:var(--line); }
 
-  #model-list{ list-style:none; }
-  #model-list li{
+  .group-label{
+    font-size:11px; letter-spacing:.2em; color:var(--ink-soft);
+    margin:14px 0 8px;
+  }
+  #model-list, .model-group{ list-style:none; }
+  .model-group li{
     display:flex; align-items:center; gap:10px;
-    padding:10px 10px; border:1px solid var(--line);
-    border-radius:5px; margin-bottom:8px;
+    padding:9px 10px; border:1px solid var(--line);
+    border-radius:5px; margin-bottom:7px;
     background:rgba(255,255,255,.35);
     cursor:pointer; transition:border-color .15s, background .15s;
   }
-  #model-list li.active{
+  .model-group li.active{
     border-color:var(--moss); background:#E7ECDF;
   }
-  #model-list li .mark{
+  .model-group li .mark{
     width:10px; height:10px; border-radius:50%;
     border:2px solid var(--stone); flex:none;
   }
-  #model-list li.active .mark{
+  .model-group li.active .mark{
     border-color:var(--moss-deep); background:var(--moss);
   }
   .m-info{ flex:1; min-width:0; }
@@ -131,19 +133,13 @@
   #start-btn:hover:not(:disabled){ background:var(--moss-deep); }
   #start-btn:disabled{ opacity:.4; cursor:not-allowed; }
 
-  table.controls{
-    width:100%; border-collapse:collapse; font-size:12px;
-  }
+  table.controls{ width:100%; border-collapse:collapse; font-size:12px; }
   table.controls td{
     padding:7px 4px; border-bottom:1px solid var(--line);
     color:var(--ink-soft); line-height:1.5;
   }
-  table.controls td:first-child{
-    width:42%; font-weight:700; color:var(--ink);
-  }
-  .note{
-    margin-top:18px; font-size:11.5px; line-height:1.8; color:var(--ink-soft);
-  }
+  table.controls td:first-child{ width:42%; font-weight:700; color:var(--ink); }
+  .note{ margin-top:18px; font-size:11.5px; line-height:1.8; color:var(--ink-soft); }
 
   /* ---------- MR中オーバーレイ ---------- */
   #xr-overlay{
@@ -169,13 +165,11 @@
   #xr-top button:active{ background:var(--moss); }
   #xr-top button.warn{ background:rgba(158,74,46,.55); }
   #xr-model{
-    font-size:13px; font-weight:700; max-width:200px;
+    font-size:13px; font-weight:700; max-width:200px; text-align:center;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
-  #xr-dims{ font-size:11px; opacity:.75; }
-  #xr-count{
-    font-size:11px; opacity:.75; padding:0 4px;
-  }
+  #xr-dims{ font-size:11px; opacity:.75; text-align:center; }
+  #xr-count{ font-size:11px; opacity:.75; padding:0 4px; }
   #xr-help{
     position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
     background:rgba(35,39,31,.72); color:var(--washi);
@@ -191,17 +185,15 @@
   }
   #xr-toast.show{ opacity:1; }
 
-  @media (max-width:640px){
-    #panel{ width:100%; }
-  }
+  @media (max-width:640px){ #panel{ width:100%; } }
 </style>
 </head>
 <body>
 
 <div id="launcher">
   <div id="panel">
-    <div class="eyebrow">GARDEN ROCK PLACEMENT — MIXED REALITY</div>
-    <h1>石庭<small>岩置きMRシミュレーター for Meta Quest 3S</small></h1>
+    <div class="eyebrow">GARDEN DESIGN — MIXED REALITY</div>
+    <h1>石庭<small>造園MRシミュレーター for Meta Quest 3S</small></h1>
 
     <svg class="ripple" width="150" height="34" viewBox="0 0 150 34" fill="none" aria-hidden="true">
       <ellipse cx="75" cy="17" rx="14" ry="5"  stroke="#5F7052" stroke-width="1.4"/>
@@ -211,14 +203,18 @@
     </svg>
 
     <p class="lead">
-      実物からスキャンした岩の3Dモデルを、パススルー越しの現場に実寸で置いて確認できます。
-      据え付け前の「この位置でこの向き、この大きさ」を、動かす前に決める道具です。
+      岩・樹木・柵・水景のプリセットや、実物からスキャンしたGLBモデルを、
+      パススルー越しの現場に実寸で置いて確認できます。
+      据え付け前の「この位置・この向き・この大きさ」を、動かす前に決める道具です。
     </p>
 
-    <div id="support">WebXR対応を確認しています…</div>
+    <div id="support">デバイスを確認しています…</div>
 
-    <h2>岩のライブラリ</h2>
-    <ul id="model-list"></ul>
+    <h2>ライブラリ</h2>
+    <div class="group-label">プリセット</div>
+    <ul class="model-group" id="preset-list"></ul>
+    <div class="group-label">読み込んだGLB</div>
+    <ul class="model-group" id="file-list"></ul>
     <div class="btn-row">
       <button class="ghost" id="add-file-btn">GLBファイルを追加</button>
       <input type="file" id="file-input" accept=".glb,.gltf" multiple hidden>
@@ -228,11 +224,11 @@
 
     <h2>操作方法</h2>
     <table class="controls">
-      <tr><td>トリガー（床に向けて）</td><td>選択中の岩を設置</td></tr>
-      <tr><td>トリガー（岩に向けて長押し）</td><td>つかんで移動</td></tr>
-      <tr><td>スティック 左右</td><td>指している岩を回転</td></tr>
-      <tr><td>スティック 上下</td><td>指している岩を拡大・縮小</td></tr>
-      <tr><td>グリップ（岩に向けて）</td><td>その岩を削除</td></tr>
+      <tr><td>トリガー（床に向けて）</td><td>選択中のモデルを設置</td></tr>
+      <tr><td>トリガー（物に向けて長押し）</td><td>つかんで移動</td></tr>
+      <tr><td>スティック 左右</td><td>指している物を回転</td></tr>
+      <tr><td>スティック 上下</td><td>指している物を拡大・縮小</td></tr>
+      <tr><td>グリップ（物に向けて）</td><td>その物を削除</td></tr>
     </table>
 
     <p class="note">
@@ -259,11 +255,37 @@
   <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝大きさ　・　グリップ＝削除</div>
 </div>
 
+<!-- 起動ウォッチドッグ: ライブラリ読込失敗を画面に表示する -->
+<script>
+(function(){
+  var el = function(){ return document.getElementById('support'); };
+  window.__bootError = function(msg){
+    var s = el(); if(!s || window.__appReady) return;
+    s.className = 'ng';
+    s.innerHTML =
+      '✕ アプリの起動に失敗しました。<br>' +
+      (msg ? '（' + msg + '）<br>' : '') +
+      '・チャット内プレビューでは動きません。<b>GitHub Pagesにアップして</b>そのURLを開いてください。<br>' +
+      '・file:// で直接開いている場合もWebXRは動きません（HTTPS必須）。<br>' +
+      '・ネットワークで cdn.jsdelivr.net がブロックされていないか確認してください。';
+  };
+  window.addEventListener('error', function(e){
+    if(!window.__appReady) window.__bootError(e.message || 'スクリプトエラー');
+  }, true);
+  setTimeout(function(){
+    if(!window.__appReady) window.__bootError('3Dライブラリの読み込みがタイムアウトしました');
+  }, 12000);
+  if(location.protocol === 'file:'){
+    window.__bootError('file:// で開かれています');
+  }
+})();
+</script>
+
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
   }
 }
 </script>
@@ -274,11 +296,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+window.__appReady = true;   // ここまで来ればライブラリ読込は成功
+
 /* ================= 基本セットアップ ================= */
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 60);
-camera.position.set(1.6, 1.4, 2.2);
+camera.position.set(1.8, 1.5, 2.6);
 
 const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -297,7 +321,7 @@ const previewGround = makeKaresansuiGround();
 scene.add(previewGround);
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 0.3, 0);
+controls.target.set(0, 0.5, 0);
 controls.enableDamping = true;
 
 addEventListener('resize', () => {
@@ -323,76 +347,200 @@ function makeKaresansuiGround(){
     new THREE.MeshStandardMaterial({ map:tex, roughness:1 })
   );
   mesh.rotation.x = -Math.PI/2;
+  mesh.position.y = -0.002;
   return mesh;
+}
+
+/* ================= プリセット生成 ================= */
+
+const MAT = {
+  stone:  new THREE.MeshStandardMaterial({ color:0x8f8f86, roughness:.95, flatShading:true }),
+  stoneD: new THREE.MeshStandardMaterial({ color:0x6e6f68, roughness:.95, flatShading:true }),
+  trunk:  new THREE.MeshStandardMaterial({ color:0x6b4f36, roughness:.9,  flatShading:true }),
+  wood:   new THREE.MeshStandardMaterial({ color:0x7a5a3a, roughness:.9,  flatShading:true }),
+  leaf:   new THREE.MeshStandardMaterial({ color:0x49683a, roughness:.85, flatShading:true }),
+  leafD:  new THREE.MeshStandardMaterial({ color:0x3a5530, roughness:.85, flatShading:true }),
+  water:  new THREE.MeshStandardMaterial({ color:0x4e7c8a, roughness:.15, metalness:0,
+                                           transparent:true, opacity:.78, side:THREE.DoubleSide }),
+};
+
+/* 疑似乱数つき岩 */
+function makeRock({ r=0.35, flat=0.72, seed=1, detail=3, mat=MAT.stone } = {}){
+  const geo = new THREE.IcosahedronGeometry(r, detail);
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+  for(let i=0; i<pos.count; i++){
+    v.fromBufferAttribute(pos, i);
+    const n =
+      0.16*Math.sin(v.x*4.1 + seed*1.7)*Math.sin(v.y*3.3 + seed) +
+      0.10*Math.sin(v.y*7.2 + seed*0.4)*Math.cos(v.z*5.1) +
+      0.05*Math.sin(v.x*13.0 + seed*2.3)*Math.sin(v.z*11.0);
+    v.multiplyScalar(1 + n);
+    v.y *= flat;
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals();
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geo, mat));
+  return g;
+}
+
+function makePine(){
+  const g = new THREE.Group();
+  const t1 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 1.1, 7), MAT.trunk);
+  t1.position.y = 0.55; t1.rotation.z = 0.07;
+  const t2 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.9, 7), MAT.trunk);
+  t2.position.set(0.09, 1.4, 0); t2.rotation.z = -0.12;
+  g.add(t1, t2);
+  const canopy = (r, sy, x, y, z, mat) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 5), mat);
+    m.scale.y = sy; m.position.set(x, y, z);
+    g.add(m);
+  };
+  canopy(0.62, 0.42, -0.12, 1.35,  0.05, MAT.leafD);
+  canopy(0.48, 0.40,  0.25, 1.80, -0.08, MAT.leaf);
+  canopy(0.34, 0.42,  0.05, 2.18,  0.06, MAT.leafD);
+  return g;
+}
+
+function makeShrub(){
+  const g = new THREE.Group();
+  const t = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.22, 6), MAT.trunk);
+  t.position.y = 0.11;
+  g.add(t);
+  [[0.3, 0.34, 0, 0], [0.24, 0.4, 0.18, 0.1], [0.22, 0.36, -0.17, -0.08]].forEach(([r, y, x, z], i) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), i % 2 ? MAT.leafD : MAT.leaf);
+    m.scale.y = 0.8; m.position.set(x, y, z);
+    g.add(m);
+  });
+  return g;
+}
+
+function makeFence(){
+  const g = new THREE.Group();
+  [-0.45, 0.45].forEach(x => {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.85, 7), MAT.wood);
+    p.position.set(x, 0.425, 0);
+    g.add(p);
+  });
+  [0.62, 0.32].forEach(y => {
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 1.06, 6), MAT.wood);
+    r.rotation.z = Math.PI/2; r.position.y = y;
+    g.add(r);
+  });
+  return g;
+}
+
+function makeStream(){
+  const g = new THREE.Group();
+  const geo = new THREE.PlaneGeometry(0.7, 2.2, 6, 22);
+  const pos = geo.attributes.position;
+  for(let i=0; i<pos.count; i++){
+    const y = pos.getY(i);
+    pos.setX(i, pos.getX(i) + 0.2*Math.sin(y*2.4));
+  }
+  geo.computeVertexNormals();
+  const water = new THREE.Mesh(geo, MAT.water);
+  water.rotation.x = -Math.PI/2;
+  g.add(water);
+  // 岸の小石
+  for(let i=0; i<10; i++){
+    const t = (i/9 - 0.5) * 2.0;
+    const cx = 0.2*Math.sin(-t*2.4);
+    const side = i % 2 ? 1 : -1;
+    const s = makeRock({ r:0.055 + 0.03*((i*7)%3)/2, flat:0.6, seed:i*3+1, detail:1, mat:MAT.stoneD });
+    s.position.set(cx + side*(0.38 + 0.03*((i*5)%2)), 0, t);
+    g.add(s);
+  }
+  return g;
+}
+
+function makePond(){
+  const g = new THREE.Group();
+  const geo = new THREE.CircleGeometry(0.85, 36);
+  geo.scale(1.3, 1, 1);
+  const water = new THREE.Mesh(geo, MAT.water);
+  water.rotation.x = -Math.PI/2;
+  g.add(water);
+  // 縁石
+  const N = 14;
+  for(let i=0; i<N; i++){
+    const a = (i/N) * Math.PI * 2;
+    const s = makeRock({ r:0.09 + 0.05*((i*7)%3)/2, flat:0.62, seed:i*5+2, detail:1, mat:MAT.stoneD });
+    s.position.set(Math.cos(a)*1.14, 0, Math.sin(a)*0.88);
+    s.rotation.y = a;
+    g.add(s);
+  }
+  return g;
+}
+
+function makeLantern(){
+  const g = new THREE.Group();
+  const add = (geoObj, y, mat=MAT.stone) => {
+    const m = new THREE.Mesh(geoObj, mat);
+    m.position.y = y;
+    g.add(m);
+    return m;
+  };
+  add(new THREE.CylinderGeometry(0.19, 0.22, 0.08, 8), 0.04);                 // 基礎
+  add(new THREE.CylinderGeometry(0.065, 0.075, 0.52, 8), 0.34);               // 柱
+  add(new THREE.CylinderGeometry(0.16, 0.12, 0.06, 8), 0.63);                 // 中台
+  add(new THREE.BoxGeometry(0.2, 0.2, 0.2), 0.76, MAT.stoneD);                // 火袋
+  const roof = add(new THREE.ConeGeometry(0.27, 0.17, 4), 0.945);             // 笠
+  roof.rotation.y = Math.PI/4;
+  add(new THREE.SphereGeometry(0.05, 8, 6), 1.07);                            // 宝珠
+  return g;
 }
 
 /* ================= モデルライブラリ ================= */
 
 const loader = new GLTFLoader();
 const draco = new DRACOLoader();
-draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
+draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
 loader.setDRACOLoader(draco);
 
-/** @type {{name:string, template:THREE.Group, size:THREE.Vector3, tris:number}[]} */
+/** @type {{name:string, template:THREE.Group, size:THREE.Vector3, tris:number, preset:boolean}[]} */
 const models = [];
 let activeIndex = 0;
-
-/* 起動時サンプル岩(手続き生成) */
-addModel('サンプル岩（生成）', makeSampleRock());
-
-function makeSampleRock(){
-  const geo = new THREE.IcosahedronGeometry(0.32, 4);
-  const pos = geo.attributes.position;
-  const v = new THREE.Vector3();
-  const colors = [];
-  for(let i=0; i<pos.count; i++){
-    v.fromBufferAttribute(pos, i);
-    const n =
-      0.16*Math.sin(v.x*4.1+1.7)*Math.sin(v.y*3.3) +
-      0.10*Math.sin(v.y*7.2+0.4)*Math.cos(v.z*5.1) +
-      0.05*Math.sin(v.x*13.0)*Math.sin(v.z*11.0);
-    v.multiplyScalar(1 + n);
-    v.y *= 0.72;                       // 座りのよい扁平な岩に
-    pos.setXYZ(i, v.x, v.y, v.z);
-    const shade = 0.52 + 0.16*Math.sin(v.x*9.0)*Math.sin(v.z*8.0) + 0.06*n*4;
-    colors.push(shade*0.98, shade, shade*0.94);
-  }
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-    vertexColors:true, roughness:0.96, metalness:0.0
-  }));
-  const g = new THREE.Group();
-  g.add(mesh);
-  return g;
-}
 
 function countTris(root){
   let t = 0;
   root.traverse(o => {
     if(o.isMesh && o.geometry){
-      const g = o.geometry;
-      t += g.index ? g.index.count/3 : (g.attributes.position ? g.attributes.position.count/3 : 0);
+      const geo = o.geometry;
+      t += geo.index ? geo.index.count/3 : (geo.attributes.position ? geo.attributes.position.count/3 : 0);
     }
   });
   return Math.round(t);
 }
 
 /* 底面中心を原点に正規化してテンプレート化 */
-function addModel(name, rawRoot){
+function addModel(name, rawRoot, { preset=false, lift=0, select=false } = {}){
   const box = new THREE.Box3().setFromObject(rawRoot);
-  if(box.isEmpty()){ toastLauncher(`「${name}」にメッシュが見つかりませんでした`); return; }
+  if(box.isEmpty()){ alert(`「${name}」にメッシュが見つかりませんでした`); return; }
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
   rawRoot.position.sub(new THREE.Vector3(center.x, box.min.y, center.z));
+  rawRoot.position.y += lift;
   const template = new THREE.Group();
   template.add(rawRoot);
-  models.push({ name, template, size, tris: countTris(rawRoot) });
-  activeIndex = models.length - 1;
+  models.push({ name, template, size, tris: countTris(rawRoot), preset });
+  if(select) activeIndex = models.length - 1;
   refreshLibraryUI();
   refreshXRLabel();
   refreshPreview();
 }
+
+/* プリセット登録 */
+addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true });
+addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true });
+addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true });
+addModel('松の木',        makePine(),    { preset:true });
+addModel('低木',          makeShrub(),   { preset:true });
+addModel('木柵（1m）',    makeFence(),   { preset:true });
+addModel('小川（2m）',    makeStream(),  { preset:true, lift:0.01 });
+addModel('池',            makePond(),    { preset:true, lift:0.01 });
+addModel('石灯籠',        makeLantern(), { preset:true });
 
 /* ---------- ファイル読み込み ---------- */
 const fileInput = document.getElementById('file-input');
@@ -402,7 +550,7 @@ fileInput.addEventListener('change', async (e) => {
     try{
       const buf = await file.arrayBuffer();
       const gltf = await new Promise((res, rej) => loader.parse(buf, '', res, rej));
-      addModel(file.name.replace(/\.(glb|gltf)$/i,''), gltf.scene);
+      addModel(file.name.replace(/\.(glb|gltf)$/i,''), gltf.scene, { select:true });
     }catch(err){
       console.error(err);
       alert(`「${file.name}」の読み込みに失敗しました。\nテクスチャ埋め込み済みの .glb 形式を推奨します。\n(${err.message || err})`);
@@ -412,15 +560,19 @@ fileInput.addEventListener('change', async (e) => {
 });
 
 /* ---------- ランチャーUI ---------- */
-const listEl = document.getElementById('model-list');
+const presetListEl = document.getElementById('preset-list');
+const fileListEl = document.getElementById('file-list');
 
 function fmtDims(s){
   const f = (n) => n >= 1 ? n.toFixed(2)+'m' : Math.round(n*100)+'cm';
   return `${f(s.x)} × ${f(s.z)} × 高${f(s.y)}`;
 }
 
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
 function refreshLibraryUI(){
-  listEl.innerHTML = '';
+  presetListEl.innerHTML = '';
+  fileListEl.innerHTML = '';
   models.forEach((m, i) => {
     const li = document.createElement('li');
     if(i === activeIndex) li.classList.add('active');
@@ -429,24 +581,23 @@ function refreshLibraryUI(){
       <span class="mark"></span>
       <span class="m-info">
         <span class="m-name">${escapeHtml(m.name)}</span>
-        <span class="m-dims">${fmtDims(m.size)}　${(m.tris/10000).toFixed(1)}万△${heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : ''}</span>
+        <span class="m-dims">${fmtDims(m.size)}${m.preset ? '' : `　${(m.tris/10000).toFixed(1)}万△` + (heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : '')}</span>
       </span>
-      ${models.length > 1 ? '<button class="m-del" title="削除">✕</button>' : ''}`;
+      ${m.preset ? '' : '<button class="m-del" title="削除">✕</button>'}`;
     li.addEventListener('click', () => { activeIndex = i; refreshLibraryUI(); refreshXRLabel(); refreshPreview(); });
     const del = li.querySelector('.m-del');
     if(del) del.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      models.splice(i,1);
-      if(activeIndex >= models.length) activeIndex = models.length-1;
+      models.splice(i, 1);
+      if(activeIndex >= models.length) activeIndex = models.length - 1;
       refreshLibraryUI(); refreshXRLabel(); refreshPreview();
     });
-    listEl.appendChild(li);
+    (m.preset ? presetListEl : fileListEl).appendChild(li);
   });
+  if(!fileListEl.children.length){
+    fileListEl.innerHTML = '<li style="cursor:default; color:var(--ink-soft); font-size:12px; border-style:dashed;">まだありません — 下のボタンから追加</li>';
+  }
 }
-
-function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-function toastLauncher(msg){ alert(msg); }
 
 /* ---------- デスクトップ/ランチャープレビュー ---------- */
 let previewObj = null;
@@ -458,7 +609,6 @@ function refreshPreview(){
   previewObj = m.template.clone(true);
   scene.add(previewObj);
 }
-refreshPreview();
 
 /* ================= WebXR ================= */
 
@@ -477,8 +627,8 @@ if(navigator.xr){
       supportEl.textContent = '✕ immersive-ar 非対応です。Meta Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）';
       supportEl.className = 'ng';
     }
-  }).catch(()=>{
-    supportEl.textContent = '✕ WebXRの確認に失敗しました。Quest本体のブラウザ＋HTTPSで開いてください。';
+  }).catch(() => {
+    supportEl.textContent = '✕ WebXRの確認に失敗しました。Quest本体のブラウザ＋HTTPSで開いてください。（このPCではプレビューのみ可能）';
     supportEl.className = 'ng';
   });
 }else{
@@ -517,6 +667,7 @@ renderer.xr.addEventListener('sessionstart', () => {
   renderer.setClearColor(0x000000, 0);   // パススルー
   setupHitTest();
   refreshXRLabel();
+  updateCount();
   toast('床に向けてトリガーで設置');
 });
 
@@ -541,8 +692,8 @@ const tmpMat = new THREE.Matrix4();
 const floorPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);  // local-floorでy=0≒実床
 const tmpVec = new THREE.Vector3();
 
-let hovered = null;   // レイが当たっている設置済みの岩
-let grabbed = null;   // つかんで移動中の岩
+let hovered = null;   // レイが当たっている設置済みオブジェクト
+let grabbed = null;   // つかんで移動中
 let activeController = null;
 
 const boxHelper = new THREE.BoxHelper(undefined, 0x5F7052);
@@ -593,20 +744,20 @@ function setupHitTest(){
     if(!src.targetRaySpace || hitSources.has(src)) return;
     session.requestHitTestSource({ space: src.targetRaySpace })
       .then(hts => { if(xrSession === session) hitSources.set(src, hts); })
-      .catch(()=>{ /* 平面フォールバックで続行 */ });
+      .catch(() => { /* 平面フォールバックで続行 */ });
   };
   session.inputSources.forEach(attach);
   session.addEventListener('inputsourceschange', (e) => {
     e.added.forEach(attach);
     e.removed.forEach(src => {
       const h = hitSources.get(src);
-      if(h) h.cancel?.();
+      if(h && h.cancel) h.cancel();
       hitSources.delete(src);
     });
   });
 }
 
-/* コントローラーcのレイが床と交わる点を返す(ヒットテスト優先・平面フォールバック) */
+/* コントローラーcのレイが床と交わる点(ヒットテスト優先・平面フォールバック) */
 function floorPointFor(c, frame){
   const src = c.userData.inputSource;
   const refSpace = renderer.xr.getReferenceSpace();
@@ -620,7 +771,6 @@ function floorPointFor(c, frame){
       }
     }
   }
-  // フォールバック: y=0平面との交点
   setRayFrom(c);
   const p = new THREE.Vector3();
   if(raycaster.ray.intersectPlane(floorPlane, p)) return p;
@@ -633,7 +783,7 @@ function setRayFrom(c){
   raycaster.ray.direction.set(0,0,-1).applyMatrix4(tmpMat);
 }
 
-function rockUnderRay(c){
+function objectUnderRay(c){
   setRayFrom(c);
   const hits = raycaster.intersectObjects(placedGroup.children, true);
   if(!hits.length) return null;
@@ -646,12 +796,12 @@ function rockUnderRay(c){
 function onSelectStart(c){
   if(!renderer.xr.isPresenting) return;
   activeController = c;
-  const rock = rockUnderRay(c);
-  if(rock){
-    grabbed = rock;
+  const obj = objectUnderRay(c);
+  if(obj){
+    grabbed = obj;
     toast('移動中… 離すと確定');
   }else{
-    c.userData.placeOnRelease = true;   // 離した瞬間に設置(UI誤爆を減らす)
+    c.userData.placeOnRelease = true;
   }
 }
 
@@ -669,7 +819,6 @@ function onSelectEnd(c){
     if(m && p){
       const inst = m.template.clone(true);
       inst.position.copy(p);
-      // 置いた人の方を向くように軽くY回転
       const cam = renderer.xr.getCamera();
       inst.rotation.y = Math.atan2(cam.position.x - p.x, cam.position.z - p.z);
       placedGroup.add(inst);
@@ -681,11 +830,11 @@ function onSelectEnd(c){
 
 function onSqueeze(c){
   if(!renderer.xr.isPresenting) return;
-  const rock = rockUnderRay(c);
-  if(rock){
-    if(grabbed === rock) grabbed = null;
-    if(hovered === rock) hovered = null;
-    placedGroup.remove(rock);
+  const obj = objectUnderRay(c);
+  if(obj){
+    if(grabbed === obj) grabbed = null;
+    if(hovered === obj) hovered = null;
+    placedGroup.remove(obj);
     updateCount();
     toast('削除しました');
   }
@@ -731,11 +880,13 @@ document.getElementById('xr-prev').addEventListener('click', () => {
   if(!models.length) return;
   activeIndex = (activeIndex - 1 + models.length) % models.length;
   refreshXRLabel(); refreshLibraryUI();
+  toast(models[activeIndex].name);
 });
 document.getElementById('xr-next').addEventListener('click', () => {
   if(!models.length) return;
   activeIndex = (activeIndex + 1) % models.length;
   refreshXRLabel(); refreshLibraryUI();
+  toast(models[activeIndex].name);
 });
 document.getElementById('xr-clear').addEventListener('click', () => {
   placedGroup.clear();
@@ -744,8 +895,11 @@ document.getElementById('xr-clear').addEventListener('click', () => {
   toast('すべて削除しました');
 });
 document.getElementById('xr-exit').addEventListener('click', () => {
-  xrSession?.end();
+  if(xrSession) xrSession.end();
 });
+
+refreshLibraryUI();
+refreshPreview();
 
 /* ================= メインループ ================= */
 const clock = new THREE.Clock();
@@ -754,16 +908,14 @@ renderer.setAnimationLoop((t, frame) => {
   const dt = Math.min(clock.getDelta(), 0.05);
 
   if(renderer.xr.isPresenting){
-    // ホバー判定(直近に使ったコントローラー優先、なければ両方)
     hovered = null;
-    const order = activeController ? [activeController, ...controllers.filter(c=>c!==activeController)] : controllers;
+    const order = activeController ? [activeController, ...controllers.filter(c => c !== activeController)] : controllers;
     for(const c of order){
       if(!c.userData.inputSource) continue;
-      const r = rockUnderRay(c);
+      const r = objectUnderRay(c);
       if(r){ hovered = r; break; }
     }
 
-    // 各コントローラーの床交点を更新 & レティクル表示
     let reticlePoint = null;
     for(const c of controllers){
       if(!c.userData.inputSource) continue;
@@ -782,7 +934,6 @@ renderer.setAnimationLoop((t, frame) => {
       reticle.visible = false;
     }
 
-    // ハイライト
     const target = grabbed || hovered;
     if(target){
       boxHelper.setFromObject(target);
