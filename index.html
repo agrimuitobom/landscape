@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>石庭 — 岩置きMRシミュレーター</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --washi:#EAE7DC;
+    --washi-deep:#DDD9CA;
+    --ink:#23271F;
+    --ink-soft:#4A4F44;
+    --moss:#5F7052;
+    --moss-deep:#46543C;
+    --stone:#9A9C92;
+    --line:#C9C5B4;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; }
+  body{
+    font-family:"Zen Kaku Gothic New", sans-serif;
+    color:var(--ink);
+    background:var(--washi);
+    overflow:hidden;
+  }
+  canvas{ display:block; }
+
+  /* ---------- ランチャー ---------- */
+  #launcher{
+    position:fixed; inset:0; z-index:10;
+    display:flex; align-items:stretch;
+    pointer-events:none;
+  }
+  #panel{
+    pointer-events:auto;
+    width:min(430px, 100%);
+    height:100%;
+    overflow-y:auto;
+    background:linear-gradient(105deg, rgba(234,231,220,.97) 78%, rgba(234,231,220,.86));
+    border-right:1px solid var(--line);
+    padding:34px 30px 40px;
+  }
+  .eyebrow{
+    font-size:11px; letter-spacing:.32em; color:var(--moss-deep);
+    margin-bottom:10px;
+  }
+  h1{
+    font-family:"Shippori Mincho", serif;
+    font-weight:700; font-size:34px; letter-spacing:.06em;
+    line-height:1.25;
+  }
+  h1 small{
+    display:block; font-size:13px; font-weight:500;
+    color:var(--ink-soft); letter-spacing:.14em; margin-top:8px;
+  }
+  .ripple{
+    margin:18px 0 6px;
+  }
+  .lead{
+    font-size:13px; line-height:1.9; color:var(--ink-soft);
+    margin-bottom:22px;
+  }
+  #support{
+    font-size:12px; padding:9px 12px; border-radius:4px;
+    background:var(--washi-deep); color:var(--ink-soft);
+    margin-bottom:22px; line-height:1.6;
+  }
+  #support.ok{ background:#E3E9DB; color:var(--moss-deep); }
+  #support.ng{ background:#EBDCD4; color:#7A4634; }
+
+  h2{
+    font-family:"Shippori Mincho", serif;
+    font-size:15px; font-weight:700; letter-spacing:.12em;
+    margin:26px 0 10px;
+    display:flex; align-items:center; gap:10px;
+  }
+  h2::after{ content:""; flex:1; height:1px; background:var(--line); }
+
+  #model-list{ list-style:none; }
+  #model-list li{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 10px; border:1px solid var(--line);
+    border-radius:5px; margin-bottom:8px;
+    background:rgba(255,255,255,.35);
+    cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  #model-list li.active{
+    border-color:var(--moss); background:#E7ECDF;
+  }
+  #model-list li .mark{
+    width:10px; height:10px; border-radius:50%;
+    border:2px solid var(--stone); flex:none;
+  }
+  #model-list li.active .mark{
+    border-color:var(--moss-deep); background:var(--moss);
+  }
+  .m-info{ flex:1; min-width:0; }
+  .m-name{
+    font-size:13px; font-weight:700;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .m-dims{ font-size:11px; color:var(--ink-soft); margin-top:2px; }
+  .m-dims .heavy{ color:#8A4A2E; font-weight:700; }
+  .m-del{
+    flex:none; border:none; background:none; cursor:pointer;
+    color:var(--stone); font-size:15px; padding:4px 6px;
+  }
+  .m-del:hover{ color:#8A4A2E; }
+
+  .btn-row{ display:flex; gap:8px; margin-top:12px; }
+  button.ghost{
+    flex:1; padding:11px 8px; font-size:12.5px; font-weight:500;
+    font-family:inherit; cursor:pointer;
+    background:none; color:var(--ink);
+    border:1px solid var(--ink-soft); border-radius:5px;
+    transition:background .15s;
+  }
+  button.ghost:hover{ background:rgba(95,112,82,.1); }
+
+  #start-btn{
+    width:100%; margin-top:30px;
+    padding:17px; font-size:16px; font-weight:700; letter-spacing:.22em;
+    font-family:"Shippori Mincho", serif;
+    color:var(--washi); background:var(--ink);
+    border:none; border-radius:6px; cursor:pointer;
+    transition:background .18s;
+  }
+  #start-btn:hover:not(:disabled){ background:var(--moss-deep); }
+  #start-btn:disabled{ opacity:.4; cursor:not-allowed; }
+
+  table.controls{
+    width:100%; border-collapse:collapse; font-size:12px;
+  }
+  table.controls td{
+    padding:7px 4px; border-bottom:1px solid var(--line);
+    color:var(--ink-soft); line-height:1.5;
+  }
+  table.controls td:first-child{
+    width:42%; font-weight:700; color:var(--ink);
+  }
+  .note{
+    margin-top:18px; font-size:11.5px; line-height:1.8; color:var(--ink-soft);
+  }
+
+  /* ---------- MR中オーバーレイ ---------- */
+  #xr-overlay{
+    position:fixed; inset:0; z-index:20;
+    display:none; pointer-events:none;
+    font-family:"Zen Kaku Gothic New", sans-serif;
+  }
+  #xr-overlay.on{ display:block; }
+  #xr-top{
+    pointer-events:auto;
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:10px;
+    background:rgba(35,39,31,.82); color:var(--washi);
+    padding:10px 14px; border-radius:40px;
+    backdrop-filter:blur(4px);
+  }
+  #xr-top button{
+    font-family:inherit; font-size:13px; font-weight:700;
+    border:none; border-radius:30px; cursor:pointer;
+    padding:8px 14px;
+    background:rgba(234,231,220,.16); color:var(--washi);
+  }
+  #xr-top button:active{ background:var(--moss); }
+  #xr-top button.warn{ background:rgba(158,74,46,.55); }
+  #xr-model{
+    font-size:13px; font-weight:700; max-width:200px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #xr-dims{ font-size:11px; opacity:.75; }
+  #xr-count{
+    font-size:11px; opacity:.75; padding:0 4px;
+  }
+  #xr-help{
+    position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+    background:rgba(35,39,31,.72); color:var(--washi);
+    font-size:11.5px; letter-spacing:.04em;
+    padding:8px 16px; border-radius:30px; white-space:nowrap;
+  }
+  #xr-toast{
+    position:absolute; bottom:60px; left:50%; transform:translateX(-50%);
+    background:rgba(95,112,82,.9); color:var(--washi);
+    font-size:13px; font-weight:700;
+    padding:9px 18px; border-radius:30px;
+    opacity:0; transition:opacity .25s;
+  }
+  #xr-toast.show{ opacity:1; }
+
+  @media (max-width:640px){
+    #panel{ width:100%; }
+  }
+</style>
+</head>
+<body>
+
+<div id="launcher">
+  <div id="panel">
+    <div class="eyebrow">GARDEN ROCK PLACEMENT — MIXED REALITY</div>
+    <h1>石庭<small>岩置きMRシミュレーター for Meta Quest 3S</small></h1>
+
+    <svg class="ripple" width="150" height="34" viewBox="0 0 150 34" fill="none" aria-hidden="true">
+      <ellipse cx="75" cy="17" rx="14" ry="5"  stroke="#5F7052" stroke-width="1.4"/>
+      <ellipse cx="75" cy="17" rx="34" ry="11" stroke="#9A9C92" stroke-width="1.1"/>
+      <ellipse cx="75" cy="17" rx="58" ry="16" stroke="#C9C5B4" stroke-width="1"/>
+      <circle cx="75" cy="17" r="2.4" fill="#46543C"/>
+    </svg>
+
+    <p class="lead">
+      実物からスキャンした岩の3Dモデルを、パススルー越しの現場に実寸で置いて確認できます。
+      据え付け前の「この位置でこの向き、この大きさ」を、動かす前に決める道具です。
+    </p>
+
+    <div id="support">WebXR対応を確認しています…</div>
+
+    <h2>岩のライブラリ</h2>
+    <ul id="model-list"></ul>
+    <div class="btn-row">
+      <button class="ghost" id="add-file-btn">GLBファイルを追加</button>
+      <input type="file" id="file-input" accept=".glb,.gltf" multiple hidden>
+    </div>
+
+    <button id="start-btn" disabled>MRで開始</button>
+
+    <h2>操作方法</h2>
+    <table class="controls">
+      <tr><td>トリガー（床に向けて）</td><td>選択中の岩を設置</td></tr>
+      <tr><td>トリガー（岩に向けて長押し）</td><td>つかんで移動</td></tr>
+      <tr><td>スティック 左右</td><td>指している岩を回転</td></tr>
+      <tr><td>スティック 上下</td><td>指している岩を拡大・縮小</td></tr>
+      <tr><td>グリップ（岩に向けて）</td><td>その岩を削除</td></tr>
+    </table>
+
+    <p class="note">
+      ※ Quest本体のブラウザで開いてください（HTTPS必須・GitHub Pages推奨）。<br>
+      ※ Questにダウンロードした .glb は「GLBファイルを追加」から読み込めます。<br>
+      ※ スキャンは Scaniverse / Polycam 等でGLB書き出し。1個あたり10万ポリゴン以下推奨。
+    </p>
+  </div>
+</div>
+
+<div id="xr-overlay">
+  <div id="xr-top">
+    <button id="xr-prev">◀</button>
+    <div>
+      <div id="xr-model">—</div>
+      <div id="xr-dims">—</div>
+    </div>
+    <button id="xr-next">▶</button>
+    <span id="xr-count">0個</span>
+    <button id="xr-clear" class="warn">全削除</button>
+    <button id="xr-exit">終了</button>
+  </div>
+  <div id="xr-toast"></div>
+  <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝大きさ　・　グリップ＝削除</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ================= 基本セットアップ ================= */
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 60);
+camera.position.set(1.6, 1.4, 2.2);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+renderer.setClearColor(0xEAE7DC, 1);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a7a, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(2, 4, 1.5);
+scene.add(sun);
+
+/* プレビュー用の枯山水グラウンド(MR中は非表示) */
+const previewGround = makeKaresansuiGround();
+scene.add(previewGround);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.3, 0);
+controls.enableDamping = true;
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+function makeKaresansuiGround(){
+  const c = document.createElement('canvas');
+  c.width = c.height = 1024;
+  const g = c.getContext('2d');
+  g.fillStyle = '#DDD9CA'; g.fillRect(0,0,1024,1024);
+  g.strokeStyle = 'rgba(154,156,146,.5)';
+  for(let r=40; r<760; r+=34){
+    g.lineWidth = 3;
+    g.beginPath(); g.arc(512,512,r,0,Math.PI*2); g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.CircleGeometry(3.2, 64),
+    new THREE.MeshStandardMaterial({ map:tex, roughness:1 })
+  );
+  mesh.rotation.x = -Math.PI/2;
+  return mesh;
+}
+
+/* ================= モデルライブラリ ================= */
+
+const loader = new GLTFLoader();
+const draco = new DRACOLoader();
+draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
+loader.setDRACOLoader(draco);
+
+/** @type {{name:string, template:THREE.Group, size:THREE.Vector3, tris:number}[]} */
+const models = [];
+let activeIndex = 0;
+
+/* 起動時サンプル岩(手続き生成) */
+addModel('サンプル岩（生成）', makeSampleRock());
+
+function makeSampleRock(){
+  const geo = new THREE.IcosahedronGeometry(0.32, 4);
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+  const colors = [];
+  for(let i=0; i<pos.count; i++){
+    v.fromBufferAttribute(pos, i);
+    const n =
+      0.16*Math.sin(v.x*4.1+1.7)*Math.sin(v.y*3.3) +
+      0.10*Math.sin(v.y*7.2+0.4)*Math.cos(v.z*5.1) +
+      0.05*Math.sin(v.x*13.0)*Math.sin(v.z*11.0);
+    v.multiplyScalar(1 + n);
+    v.y *= 0.72;                       // 座りのよい扁平な岩に
+    pos.setXYZ(i, v.x, v.y, v.z);
+    const shade = 0.52 + 0.16*Math.sin(v.x*9.0)*Math.sin(v.z*8.0) + 0.06*n*4;
+    colors.push(shade*0.98, shade, shade*0.94);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    vertexColors:true, roughness:0.96, metalness:0.0
+  }));
+  const g = new THREE.Group();
+  g.add(mesh);
+  return g;
+}
+
+function countTris(root){
+  let t = 0;
+  root.traverse(o => {
+    if(o.isMesh && o.geometry){
+      const g = o.geometry;
+      t += g.index ? g.index.count/3 : (g.attributes.position ? g.attributes.position.count/3 : 0);
+    }
+  });
+  return Math.round(t);
+}
+
+/* 底面中心を原点に正規化してテンプレート化 */
+function addModel(name, rawRoot){
+  const box = new THREE.Box3().setFromObject(rawRoot);
+  if(box.isEmpty()){ toastLauncher(`「${name}」にメッシュが見つかりませんでした`); return; }
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  rawRoot.position.sub(new THREE.Vector3(center.x, box.min.y, center.z));
+  const template = new THREE.Group();
+  template.add(rawRoot);
+  models.push({ name, template, size, tris: countTris(rawRoot) });
+  activeIndex = models.length - 1;
+  refreshLibraryUI();
+  refreshXRLabel();
+  refreshPreview();
+}
+
+/* ---------- ファイル読み込み ---------- */
+const fileInput = document.getElementById('file-input');
+document.getElementById('add-file-btn').addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', async (e) => {
+  for(const file of e.target.files){
+    try{
+      const buf = await file.arrayBuffer();
+      const gltf = await new Promise((res, rej) => loader.parse(buf, '', res, rej));
+      addModel(file.name.replace(/\.(glb|gltf)$/i,''), gltf.scene);
+    }catch(err){
+      console.error(err);
+      alert(`「${file.name}」の読み込みに失敗しました。\nテクスチャ埋め込み済みの .glb 形式を推奨します。\n(${err.message || err})`);
+    }
+  }
+  fileInput.value = '';
+});
+
+/* ---------- ランチャーUI ---------- */
+const listEl = document.getElementById('model-list');
+
+function fmtDims(s){
+  const f = (n) => n >= 1 ? n.toFixed(2)+'m' : Math.round(n*100)+'cm';
+  return `${f(s.x)} × ${f(s.z)} × 高${f(s.y)}`;
+}
+
+function refreshLibraryUI(){
+  listEl.innerHTML = '';
+  models.forEach((m, i) => {
+    const li = document.createElement('li');
+    if(i === activeIndex) li.classList.add('active');
+    const heavy = m.tris > 300000;
+    li.innerHTML = `
+      <span class="mark"></span>
+      <span class="m-info">
+        <span class="m-name">${escapeHtml(m.name)}</span>
+        <span class="m-dims">${fmtDims(m.size)}　${(m.tris/10000).toFixed(1)}万△${heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : ''}</span>
+      </span>
+      ${models.length > 1 ? '<button class="m-del" title="削除">✕</button>' : ''}`;
+    li.addEventListener('click', () => { activeIndex = i; refreshLibraryUI(); refreshXRLabel(); refreshPreview(); });
+    const del = li.querySelector('.m-del');
+    if(del) del.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      models.splice(i,1);
+      if(activeIndex >= models.length) activeIndex = models.length-1;
+      refreshLibraryUI(); refreshXRLabel(); refreshPreview();
+    });
+    listEl.appendChild(li);
+  });
+}
+
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function toastLauncher(msg){ alert(msg); }
+
+/* ---------- デスクトップ/ランチャープレビュー ---------- */
+let previewObj = null;
+function refreshPreview(){
+  if(previewObj){ scene.remove(previewObj); previewObj = null; }
+  if(renderer.xr.isPresenting) return;
+  const m = models[activeIndex];
+  if(!m) return;
+  previewObj = m.template.clone(true);
+  scene.add(previewObj);
+}
+refreshPreview();
+
+/* ================= WebXR ================= */
+
+const supportEl = document.getElementById('support');
+const startBtn = document.getElementById('start-btn');
+let xrSupported = false;
+
+if(navigator.xr){
+  navigator.xr.isSessionSupported('immersive-ar').then(ok => {
+    xrSupported = ok;
+    if(ok){
+      supportEl.textContent = '✔ このブラウザはMR（immersive-ar）に対応しています。';
+      supportEl.className = 'ok';
+      startBtn.disabled = false;
+    }else{
+      supportEl.textContent = '✕ immersive-ar 非対応です。Meta Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）';
+      supportEl.className = 'ng';
+    }
+  }).catch(()=>{
+    supportEl.textContent = '✕ WebXRの確認に失敗しました。Quest本体のブラウザ＋HTTPSで開いてください。';
+    supportEl.className = 'ng';
+  });
+}else{
+  supportEl.textContent = '✕ WebXR非対応ブラウザです。Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）';
+  supportEl.className = 'ng';
+}
+
+const launcher = document.getElementById('launcher');
+const xrOverlay = document.getElementById('xr-overlay');
+/* オーバーレイUIを操作したときにトリガーが「設置」扱いにならないように */
+xrOverlay.addEventListener('beforexrselect', e => e.preventDefault());
+
+let xrSession = null;
+
+startBtn.addEventListener('click', async () => {
+  if(!xrSupported) return;
+  try{
+    xrSession = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['local-floor', 'hit-test'],
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: xrOverlay }
+    });
+  }catch(err){
+    alert('MRセッションを開始できませんでした:\n' + (err.message || err));
+    return;
+  }
+  renderer.xr.setReferenceSpaceType('local-floor');
+  await renderer.xr.setSession(xrSession);
+});
+
+renderer.xr.addEventListener('sessionstart', () => {
+  launcher.style.display = 'none';
+  xrOverlay.classList.add('on');
+  previewGround.visible = false;
+  if(previewObj){ scene.remove(previewObj); previewObj = null; }
+  renderer.setClearColor(0x000000, 0);   // パススルー
+  setupHitTest();
+  refreshXRLabel();
+  toast('床に向けてトリガーで設置');
+});
+
+renderer.xr.addEventListener('sessionend', () => {
+  launcher.style.display = '';
+  xrOverlay.classList.remove('on');
+  previewGround.visible = true;
+  renderer.setClearColor(0xEAE7DC, 1);
+  hitSources.clear();
+  hovered = null; grabbed = null;
+  boxHelper.visible = false;
+  reticle.visible = false;
+  refreshPreview();
+});
+
+/* ---------- コントローラー ---------- */
+const placedGroup = new THREE.Group();
+scene.add(placedGroup);
+
+const raycaster = new THREE.Raycaster();
+const tmpMat = new THREE.Matrix4();
+const floorPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);  // local-floorでy=0≒実床
+const tmpVec = new THREE.Vector3();
+
+let hovered = null;   // レイが当たっている設置済みの岩
+let grabbed = null;   // つかんで移動中の岩
+let activeController = null;
+
+const boxHelper = new THREE.BoxHelper(undefined, 0x5F7052);
+boxHelper.visible = false;
+scene.add(boxHelper);
+
+const reticle = makeReticle();
+reticle.visible = false;
+scene.add(reticle);
+
+function makeReticle(){
+  const g = new THREE.Group();
+  const mat = (op) => new THREE.MeshBasicMaterial({ color:0x5F7052, transparent:true, opacity:op, side:THREE.DoubleSide });
+  [[0.055,0.07,0.85],[0.12,0.13,0.55],[0.19,0.198,0.3]].forEach(([a,b,o]) => {
+    const r = new THREE.Mesh(new THREE.RingGeometry(a,b,48), mat(o));
+    r.rotation.x = -Math.PI/2;
+    g.add(r);
+  });
+  const dot = new THREE.Mesh(new THREE.CircleGeometry(0.012, 24), mat(0.95));
+  dot.rotation.x = -Math.PI/2;
+  g.add(dot);
+  return g;
+}
+
+const controllers = [];
+for(let i=0; i<2; i++){
+  const c = renderer.xr.getController(i);
+  const line = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-4)]),
+    new THREE.LineBasicMaterial({ color:0x23271F, transparent:true, opacity:0.5 })
+  );
+  c.add(line);
+  c.addEventListener('selectstart', () => onSelectStart(c));
+  c.addEventListener('selectend',   () => onSelectEnd(c));
+  c.addEventListener('squeezestart',() => onSqueeze(c));
+  c.addEventListener('connected', (e) => { c.userData.inputSource = e.data; });
+  c.addEventListener('disconnected', () => { c.userData.inputSource = null; });
+  scene.add(c);
+  controllers.push(c);
+}
+
+/* ---------- ヒットテスト(コントローラーのレイ基準) ---------- */
+const hitSources = new Map();   // XRInputSource -> XRHitTestSource
+
+function setupHitTest(){
+  const session = xrSession;
+  const attach = (src) => {
+    if(!src.targetRaySpace || hitSources.has(src)) return;
+    session.requestHitTestSource({ space: src.targetRaySpace })
+      .then(hts => { if(xrSession === session) hitSources.set(src, hts); })
+      .catch(()=>{ /* 平面フォールバックで続行 */ });
+  };
+  session.inputSources.forEach(attach);
+  session.addEventListener('inputsourceschange', (e) => {
+    e.added.forEach(attach);
+    e.removed.forEach(src => {
+      const h = hitSources.get(src);
+      if(h) h.cancel?.();
+      hitSources.delete(src);
+    });
+  });
+}
+
+/* コントローラーcのレイが床と交わる点を返す(ヒットテスト優先・平面フォールバック) */
+function floorPointFor(c, frame){
+  const src = c.userData.inputSource;
+  const refSpace = renderer.xr.getReferenceSpace();
+  if(src && frame){
+    const hts = hitSources.get(src);
+    if(hts){
+      const results = frame.getHitTestResults(hts);
+      if(results.length){
+        const pose = results[0].getPose(refSpace);
+        if(pose) return tmpVec.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z).clone();
+      }
+    }
+  }
+  // フォールバック: y=0平面との交点
+  setRayFrom(c);
+  const p = new THREE.Vector3();
+  if(raycaster.ray.intersectPlane(floorPlane, p)) return p;
+  return null;
+}
+
+function setRayFrom(c){
+  tmpMat.identity().extractRotation(c.matrixWorld);
+  raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
+  raycaster.ray.direction.set(0,0,-1).applyMatrix4(tmpMat);
+}
+
+function rockUnderRay(c){
+  setRayFrom(c);
+  const hits = raycaster.intersectObjects(placedGroup.children, true);
+  if(!hits.length) return null;
+  let o = hits[0].object;
+  while(o.parent && o.parent !== placedGroup) o = o.parent;
+  return o.parent === placedGroup ? o : null;
+}
+
+/* ---------- 操作 ---------- */
+function onSelectStart(c){
+  if(!renderer.xr.isPresenting) return;
+  activeController = c;
+  const rock = rockUnderRay(c);
+  if(rock){
+    grabbed = rock;
+    toast('移動中… 離すと確定');
+  }else{
+    c.userData.placeOnRelease = true;   // 離した瞬間に設置(UI誤爆を減らす)
+  }
+}
+
+function onSelectEnd(c){
+  if(!renderer.xr.isPresenting) return;
+  if(grabbed && activeController === c){
+    grabbed = null;
+    toast('設置しました');
+    return;
+  }
+  if(c.userData.placeOnRelease){
+    c.userData.placeOnRelease = false;
+    const m = models[activeIndex];
+    const p = c.userData.lastFloorPoint;
+    if(m && p){
+      const inst = m.template.clone(true);
+      inst.position.copy(p);
+      // 置いた人の方を向くように軽くY回転
+      const cam = renderer.xr.getCamera();
+      inst.rotation.y = Math.atan2(cam.position.x - p.x, cam.position.z - p.z);
+      placedGroup.add(inst);
+      updateCount();
+      toast(`${m.name} を設置（${placedGroup.children.length}個目）`);
+    }
+  }
+}
+
+function onSqueeze(c){
+  if(!renderer.xr.isPresenting) return;
+  const rock = rockUnderRay(c);
+  if(rock){
+    if(grabbed === rock) grabbed = null;
+    if(hovered === rock) hovered = null;
+    placedGroup.remove(rock);
+    updateCount();
+    toast('削除しました');
+  }
+}
+
+/* スティック: 左右=回転 / 上下=スケール */
+function pollThumbsticks(dt){
+  const target = grabbed || hovered;
+  if(!target || !xrSession) return;
+  for(const src of xrSession.inputSources){
+    const gp = src.gamepad;
+    if(!gp || gp.axes.length < 4) continue;
+    const x = gp.axes[2], y = gp.axes[3];
+    if(Math.abs(x) > 0.18) target.rotation.y -= x * 1.8 * dt;
+    if(Math.abs(y) > 0.18){
+      const s = THREE.MathUtils.clamp(target.scale.x * (1 - y * 0.9 * dt), 0.2, 4.0);
+      target.scale.setScalar(s);
+    }
+  }
+}
+
+/* ---------- MR中オーバーレイ ---------- */
+const xrModelEl = document.getElementById('xr-model');
+const xrDimsEl  = document.getElementById('xr-dims');
+const xrCountEl = document.getElementById('xr-count');
+const toastEl   = document.getElementById('xr-toast');
+let toastTimer = null;
+
+function refreshXRLabel(){
+  const m = models[activeIndex];
+  xrModelEl.textContent = m ? m.name : '—';
+  xrDimsEl.textContent  = m ? fmtDims(m.size) : '—';
+}
+function updateCount(){ xrCountEl.textContent = placedGroup.children.length + '個'; }
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+document.getElementById('xr-prev').addEventListener('click', () => {
+  if(!models.length) return;
+  activeIndex = (activeIndex - 1 + models.length) % models.length;
+  refreshXRLabel(); refreshLibraryUI();
+});
+document.getElementById('xr-next').addEventListener('click', () => {
+  if(!models.length) return;
+  activeIndex = (activeIndex + 1) % models.length;
+  refreshXRLabel(); refreshLibraryUI();
+});
+document.getElementById('xr-clear').addEventListener('click', () => {
+  placedGroup.clear();
+  hovered = null; grabbed = null;
+  updateCount();
+  toast('すべて削除しました');
+});
+document.getElementById('xr-exit').addEventListener('click', () => {
+  xrSession?.end();
+});
+
+/* ================= メインループ ================= */
+const clock = new THREE.Clock();
+
+renderer.setAnimationLoop((t, frame) => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if(renderer.xr.isPresenting){
+    // ホバー判定(直近に使ったコントローラー優先、なければ両方)
+    hovered = null;
+    const order = activeController ? [activeController, ...controllers.filter(c=>c!==activeController)] : controllers;
+    for(const c of order){
+      if(!c.userData.inputSource) continue;
+      const r = rockUnderRay(c);
+      if(r){ hovered = r; break; }
+    }
+
+    // 各コントローラーの床交点を更新 & レティクル表示
+    let reticlePoint = null;
+    for(const c of controllers){
+      if(!c.userData.inputSource) continue;
+      const p = floorPointFor(c, frame);
+      c.userData.lastFloorPoint = p;
+      if(p && (c === activeController || !reticlePoint)) reticlePoint = p;
+    }
+    if(grabbed && activeController){
+      const p = activeController.userData.lastFloorPoint;
+      if(p) grabbed.position.copy(p);
+      reticle.visible = false;
+    }else if(reticlePoint && !hovered){
+      reticle.position.copy(reticlePoint);
+      reticle.visible = true;
+    }else{
+      reticle.visible = false;
+    }
+
+    // ハイライト
+    const target = grabbed || hovered;
+    if(target){
+      boxHelper.setFromObject(target);
+      boxHelper.visible = true;
+    }else{
+      boxHelper.visible = false;
+    }
+
+    pollThumbsticks(dt);
+  }else{
+    if(previewObj) previewObj.rotation.y += dt * 0.35;
+    controls.update();
+  }
+
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
