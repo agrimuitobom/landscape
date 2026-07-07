@@ -140,6 +140,7 @@
   }
   table.controls td:first-child{ width:42%; font-weight:700; color:var(--ink); }
   .note{ margin-top:18px; font-size:11.5px; line-height:1.8; color:var(--ink-soft); }
+  .layout-status{ font-size:12px; line-height:1.7; color:var(--ink-soft); margin-bottom:8px; }
 
   /* ---------- MR中オーバーレイ ---------- */
   #xr-overlay{
@@ -220,6 +221,14 @@
       <input type="file" id="file-input" accept=".glb,.gltf" multiple hidden>
     </div>
 
+    <h2>レイアウト</h2>
+    <p class="layout-status" id="layout-status">配置はまだありません（設置すると自動保存されます）</p>
+    <div class="btn-row">
+      <button class="ghost" id="layout-export-btn">書き出し（JSON）</button>
+      <button class="ghost" id="layout-import-btn">読み込み</button>
+      <input type="file" id="layout-input" accept=".json,application/json" hidden>
+    </div>
+
     <button id="start-btn" disabled>MRで開始</button>
 
     <h2>操作方法</h2>
@@ -234,7 +243,9 @@
     <p class="note">
       ※ Quest本体のブラウザで開いてください（HTTPS必須・GitHub Pages推奨）。<br>
       ※ Questにダウンロードした .glb は「GLBファイルを追加」から読み込めます。<br>
-      ※ スキャンは Scaniverse / Polycam 等でGLB書き出し。1個あたり10万ポリゴン以下推奨。
+      ※ スキャンは Scaniverse / Polycam 等でGLB書き出し。1個あたり10万ポリゴン以下推奨。<br>
+      ※ 配置と読み込んだGLBはこの端末に自動保存され、次回開いたとき復元されます。<br>
+      ※ Questでは空間アンカーで前回と同じ実際の位置に配置を復元します。
     </p>
   </div>
 </div>
@@ -499,7 +510,52 @@ const draco = new DRACOLoader();
 draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
 loader.setDRACOLoader(draco);
 
-/** @type {{name:string, template:THREE.Group, size:THREE.Vector3, tris:number, preset:boolean}[]} */
+/* ---------- 永続化(IndexedDB: GLB / localStorage: 配置・アンカー) ---------- */
+const LS_LAYOUT = 'sekitei.layout.v1';
+const LS_ANCHOR = 'sekitei.anchor.v1';
+
+let dbPromise = null;
+function openDB(){
+  if(dbPromise) return dbPromise;
+  dbPromise = new Promise((res, rej) => {
+    const req = indexedDB.open('sekitei', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('glbs', { keyPath:'id' });
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+  return dbPromise;
+}
+async function dbPut(rec){
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('glbs', 'readwrite');
+    tx.objectStore('glbs').put(rec);
+    tx.oncomplete = res;
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function dbDelete(id){
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('glbs', 'readwrite');
+    tx.objectStore('glbs').delete(id);
+    tx.oncomplete = res;
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function dbGetAll(){
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const req = db.transaction('glbs').objectStore('glbs').getAll();
+    req.onsuccess = () => res(req.result || []);
+    req.onerror = () => rej(req.error);
+  });
+}
+function newFileId(){
+  return 'f:' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
+}
+
+/** @type {{id:string, name:string, template:THREE.Group, size:THREE.Vector3, tris:number, preset:boolean}[]} */
 const models = [];
 let activeIndex = 0;
 
@@ -515,32 +571,23 @@ function countTris(root){
 }
 
 /* 底面中心を原点に正規化してテンプレート化 */
-function addModel(name, rawRoot, { preset=false, lift=0, select=false } = {}){
+function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null } = {}){
   const box = new THREE.Box3().setFromObject(rawRoot);
-  if(box.isEmpty()){ alert(`「${name}」にメッシュが見つかりませんでした`); return; }
+  if(box.isEmpty()){ alert(`「${name}」にメッシュが見つかりませんでした`); return null; }
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
   rawRoot.position.sub(new THREE.Vector3(center.x, box.min.y, center.z));
   rawRoot.position.y += lift;
   const template = new THREE.Group();
   template.add(rawRoot);
-  models.push({ name, template, size, tris: countTris(rawRoot), preset });
+  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset };
+  models.push(entry);
   if(select) activeIndex = models.length - 1;
   refreshLibraryUI();
   refreshXRLabel();
   refreshPreview();
+  return entry;
 }
-
-/* プリセット登録 */
-addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true });
-addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true });
-addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true });
-addModel('松の木',        makePine(),    { preset:true });
-addModel('低木',          makeShrub(),   { preset:true });
-addModel('木柵（1m）',    makeFence(),   { preset:true });
-addModel('小川（2m）',    makeStream(),  { preset:true, lift:0.01 });
-addModel('池',            makePond(),    { preset:true, lift:0.01 });
-addModel('石灯籠',        makeLantern(), { preset:true });
 
 /* ---------- ファイル読み込み ---------- */
 const fileInput = document.getElementById('file-input');
@@ -550,7 +597,11 @@ fileInput.addEventListener('change', async (e) => {
     try{
       const buf = await file.arrayBuffer();
       const gltf = await new Promise((res, rej) => loader.parse(buf, '', res, rej));
-      addModel(file.name.replace(/\.(glb|gltf)$/i,''), gltf.scene, { select:true });
+      const entry = addModel(file.name.replace(/\.(glb|gltf)$/i,''), gltf.scene, { select:true });
+      if(entry){
+        dbPut({ id: entry.id, name: entry.name, buffer: buf, addedAt: Date.now() })
+          .catch(err => console.warn('GLBの保存に失敗しました（次回起動時は復元されません）:', err));
+      }
     }catch(err){
       console.error(err);
       alert(`「${file.name}」の読み込みに失敗しました。\nテクスチャ埋め込み済みの .glb 形式を推奨します。\n(${err.message || err})`);
@@ -558,6 +609,23 @@ fileInput.addEventListener('change', async (e) => {
   }
   fileInput.value = '';
 });
+
+/* 前回読み込んだGLBをIndexedDBから復元 */
+async function restoreSavedGLBs(){
+  try{
+    const recs = await dbGetAll();
+    for(const rec of recs){
+      try{
+        const gltf = await new Promise((res, rej) => loader.parse(rec.buffer, '', res, rej));
+        addModel(rec.name, gltf.scene, { id: rec.id });
+      }catch(err){
+        console.warn('保存済みGLBの復元に失敗:', rec.name, err);
+      }
+    }
+  }catch(err){
+    console.warn('IndexedDBを利用できないため、GLBの保存・復元は無効です:', err);
+  }
+}
 
 /* ---------- ランチャーUI ---------- */
 const presetListEl = document.getElementById('preset-list');
@@ -588,7 +656,9 @@ function refreshLibraryUI(){
     const del = li.querySelector('.m-del');
     if(del) del.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      models.splice(i, 1);
+      const [removed] = models.splice(i, 1);
+      if(removed && !removed.preset) dbDelete(removed.id).catch(() => {});
+      if(i < activeIndex) activeIndex--;
       if(activeIndex >= models.length) activeIndex = models.length - 1;
       refreshLibraryUI(); refreshXRLabel(); refreshPreview();
     });
@@ -648,7 +718,7 @@ startBtn.addEventListener('click', async () => {
   try{
     xrSession = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['local-floor', 'hit-test'],
-      optionalFeatures: ['dom-overlay'],
+      optionalFeatures: ['dom-overlay', 'anchors'],
       domOverlay: { root: xrOverlay }
     });
   }catch(err){
@@ -666,9 +736,11 @@ renderer.xr.addEventListener('sessionstart', () => {
   if(previewObj){ scene.remove(previewObj); previewObj = null; }
   renderer.setClearColor(0x000000, 0);   // パススルー
   setupHitTest();
+  initAnchor(xrSession);
   refreshXRLabel();
   updateCount();
-  toast('床に向けてトリガーで設置');
+  const n = placedGroup.children.length;
+  toast(n ? `前回の配置 ${n}個を復元しました` : '床に向けてトリガーで設置');
 });
 
 renderer.xr.addEventListener('sessionend', () => {
@@ -680,12 +752,195 @@ renderer.xr.addEventListener('sessionend', () => {
   hovered = null; grabbed = null;
   boxHelper.visible = false;
   reticle.visible = false;
+  xrAnchor = null; needCreateAnchor = false;
+  anchorRoot.position.set(0, 0, 0);
+  anchorRoot.quaternion.identity();
+  saveLayoutNow();
   refreshPreview();
 });
 
-/* ---------- コントローラー ---------- */
+/* ---------- 設置オブジェクトと空間アンカー ---------- */
+/* anchorRoot は永続アンカーのポーズに追従する。設置物はその中に相対配置され、
+   次回セッションでも実空間の同じ場所に復元される(アンカー非対応時は原点=床基準)。 */
+const anchorRoot = new THREE.Group();
+scene.add(anchorRoot);
 const placedGroup = new THREE.Group();
-scene.add(placedGroup);
+anchorRoot.add(placedGroup);
+
+let xrAnchor = null;
+let needCreateAnchor = false;
+
+async function initAnchor(session){
+  xrAnchor = null;
+  needCreateAnchor = false;
+  const feats = session.enabledFeatures;
+  if(feats && !feats.includes('anchors')) return;
+  const handle = localStorage.getItem(LS_ANCHOR);
+  if(handle && session.restorePersistentAnchor){
+    try{
+      const a = await session.restorePersistentAnchor(handle);
+      if(xrSession === session){ xrAnchor = a; toast('前回の基準点に位置合わせしました'); }
+      return;
+    }catch(err){
+      console.warn('永続アンカーの復元に失敗（作り直します）:', err);
+      localStorage.removeItem(LS_ANCHOR);
+    }
+  }
+  if(xrSession === session) needCreateAnchor = true;
+}
+
+/* フレーム毎: アンカー作成(初回のみ)とポーズ追従 */
+function updateAnchor(frame){
+  const refSpace = renderer.xr.getReferenceSpace();
+  if(!refSpace) return;
+  if(needCreateAnchor){
+    needCreateAnchor = false;
+    if(frame.createAnchor){
+      const session = xrSession;
+      frame.createAnchor(new XRRigidTransform(), refSpace).then(async (a) => {
+        if(xrSession !== session) return;
+        xrAnchor = a;
+        if(a.requestPersistentHandle){
+          try{ localStorage.setItem(LS_ANCHOR, await a.requestPersistentHandle()); }
+          catch(err){ console.warn('アンカーの永続化に失敗:', err); }
+        }
+      }).catch(err => console.warn('アンカー作成に失敗:', err));
+    }
+  }
+  if(xrAnchor){
+    try{
+      const pose = frame.getPose(xrAnchor.anchorSpace, refSpace);
+      if(pose){
+        const p = pose.transform.position, q = pose.transform.orientation;
+        anchorRoot.position.set(p.x, p.y, p.z);
+        anchorRoot.quaternion.set(q.x, q.y, q.z, q.w);
+      }
+    }catch(err){ /* アンカー消失時はそのまま続行 */ }
+  }
+}
+
+function anchorYaw(){
+  return new THREE.Euler().setFromQuaternion(anchorRoot.quaternion, 'YXZ').y;
+}
+function worldToPlaced(p){
+  placedGroup.updateWorldMatrix(true, false);
+  return placedGroup.worldToLocal(p.clone());
+}
+
+/* ---------- 配置の保存・復元 ---------- */
+const layoutStatusEl = document.getElementById('layout-status');
+let layoutReady = false;   // 初期復元が終わるまで保存しない(空上書き防止)
+let saveTimer = null;
+
+function serializeLayout(){
+  const r = (v) => Math.round(v * 10000) / 10000;
+  return {
+    app: 'sekitei',
+    version: 1,
+    savedAt: new Date().toISOString(),
+    items: placedGroup.children.map(o => ({
+      id: o.userData.modelId,
+      name: o.userData.modelName,
+      pos: [r(o.position.x), r(o.position.y), r(o.position.z)],
+      rotY: r(o.rotation.y),
+      scale: r(o.scale.x)
+    }))
+  };
+}
+
+function saveLayoutNow(){
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  if(!layoutReady) return;
+  try{ localStorage.setItem(LS_LAYOUT, JSON.stringify(serializeLayout())); }
+  catch(err){ console.warn('配置の保存に失敗:', err); }
+  updateLayoutStatus();
+}
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveLayoutNow, 600);
+}
+
+function instantiateFromItem(m, item){
+  const inst = m.template.clone(true);
+  inst.userData.modelId = m.id;
+  inst.userData.modelName = m.name;
+  inst.position.fromArray(item.pos);
+  inst.rotation.y = item.rotY || 0;
+  inst.scale.setScalar(THREE.MathUtils.clamp(item.scale || 1, 0.05, 10));
+  placedGroup.add(inst);
+  return inst;
+}
+
+/* 配置データを反映して、見つからなかったモデル数を返す */
+function applyLayout(data){
+  placedGroup.clear();
+  let missing = 0;
+  for(const item of (data.items || [])){
+    const m = models.find(x => x.id === item.id) || models.find(x => x.name === item.name);
+    if(!m){ missing++; continue; }
+    instantiateFromItem(m, item);
+  }
+  updateCount();
+  updateLayoutStatus();
+  return missing;
+}
+
+function loadSavedLayout(){
+  try{
+    const raw = localStorage.getItem(LS_LAYOUT);
+    if(raw){
+      const missing = applyLayout(JSON.parse(raw));
+      if(missing) console.warn(`配置のうち${missing}個はモデルが見つからず復元できませんでした`);
+    }
+  }catch(err){
+    console.warn('配置の復元に失敗:', err);
+  }
+  layoutReady = true;
+  updateLayoutStatus();
+}
+
+function updateLayoutStatus(){
+  const n = placedGroup.children.length;
+  layoutStatusEl.textContent = n
+    ? `配置 ${n}個 — この端末に自動保存されています`
+    : '配置はまだありません（設置すると自動保存されます）';
+}
+
+document.getElementById('layout-export-btn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(serializeLayout(), null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  a.download = `sekitei-layout-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+const layoutInput = document.getElementById('layout-input');
+document.getElementById('layout-import-btn').addEventListener('click', () => layoutInput.click());
+layoutInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  layoutInput.value = '';
+  if(!file) return;
+  try{
+    const data = JSON.parse(await file.text());
+    if(data.app !== 'sekitei' || !Array.isArray(data.items)) throw new Error('形式が違います');
+    const missing = applyLayout(data);
+    layoutReady = true;
+    saveLayoutNow();
+    refreshPreview();
+    if(missing) alert(`${missing}個のモデルがライブラリに無いため復元できませんでした。\n先に該当のGLBを読み込んでから、もう一度読み込んでください。`);
+  }catch(err){
+    alert(`レイアウトの読み込みに失敗しました。\n(${err.message || err})`);
+  }
+});
+
+/* 保留中のデバウンス保存だけをフラッシュ(無条件に保存すると別タブの内容を上書きしうる) */
+addEventListener('visibilitychange', () => { if(document.hidden && saveTimer) saveLayoutNow(); });
+
+/* ---------- コントローラー ---------- */
 
 const raycaster = new THREE.Raycaster();
 const tmpMat = new THREE.Matrix4();
@@ -809,6 +1064,7 @@ function onSelectEnd(c){
   if(!renderer.xr.isPresenting) return;
   if(grabbed && activeController === c){
     grabbed = null;
+    scheduleSave();
     toast('設置しました');
     return;
   }
@@ -818,11 +1074,14 @@ function onSelectEnd(c){
     const p = c.userData.lastFloorPoint;
     if(m && p){
       const inst = m.template.clone(true);
-      inst.position.copy(p);
-      const cam = renderer.xr.getCamera();
-      inst.rotation.y = Math.atan2(cam.position.x - p.x, cam.position.z - p.z);
+      inst.userData.modelId = m.id;
+      inst.userData.modelName = m.name;
       placedGroup.add(inst);
+      inst.position.copy(worldToPlaced(p));
+      const cam = renderer.xr.getCamera();
+      inst.rotation.y = Math.atan2(cam.position.x - p.x, cam.position.z - p.z) - anchorYaw();
       updateCount();
+      scheduleSave();
       toast(`${m.name} を設置（${placedGroup.children.length}個目）`);
     }
   }
@@ -836,6 +1095,7 @@ function onSqueeze(c){
     if(hovered === obj) hovered = null;
     placedGroup.remove(obj);
     updateCount();
+    scheduleSave();
     toast('削除しました');
   }
 }
@@ -844,16 +1104,19 @@ function onSqueeze(c){
 function pollThumbsticks(dt){
   const target = grabbed || hovered;
   if(!target || !xrSession) return;
+  let changed = false;
   for(const src of xrSession.inputSources){
     const gp = src.gamepad;
     if(!gp || gp.axes.length < 4) continue;
     const x = gp.axes[2], y = gp.axes[3];
-    if(Math.abs(x) > 0.18) target.rotation.y -= x * 1.8 * dt;
+    if(Math.abs(x) > 0.18){ target.rotation.y -= x * 1.8 * dt; changed = true; }
     if(Math.abs(y) > 0.18){
       const s = THREE.MathUtils.clamp(target.scale.x * (1 - y * 0.9 * dt), 0.2, 4.0);
       target.scale.setScalar(s);
+      changed = true;
     }
   }
+  if(changed) scheduleSave();
 }
 
 /* ---------- MR中オーバーレイ ---------- */
@@ -892,14 +1155,27 @@ document.getElementById('xr-clear').addEventListener('click', () => {
   placedGroup.clear();
   hovered = null; grabbed = null;
   updateCount();
+  saveLayoutNow();
   toast('すべて削除しました');
 });
 document.getElementById('xr-exit').addEventListener('click', () => {
   if(xrSession) xrSession.end();
 });
 
-refreshLibraryUI();
-refreshPreview();
+/* ================= 起動シーケンス ================= */
+/* プリセット登録(参照するUI要素の宣言より後に実行する必要がある) */
+addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true });
+addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true });
+addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true });
+addModel('松の木',        makePine(),    { preset:true });
+addModel('低木',          makeShrub(),   { preset:true });
+addModel('木柵（1m）',    makeFence(),   { preset:true });
+addModel('小川（2m）',    makeStream(),  { preset:true, lift:0.01 });
+addModel('池',            makePond(),    { preset:true, lift:0.01 });
+addModel('石灯籠',        makeLantern(), { preset:true });
+updateLayoutStatus();
+/* 保存済みGLB → 配置レイアウト の順で復元(配置がGLBを参照するため) */
+restoreSavedGLBs().then(loadSavedLayout);
 
 /* ================= メインループ ================= */
 const clock = new THREE.Clock();
@@ -908,6 +1184,7 @@ renderer.setAnimationLoop((t, frame) => {
   const dt = Math.min(clock.getDelta(), 0.05);
 
   if(renderer.xr.isPresenting){
+    if(frame) updateAnchor(frame);
     hovered = null;
     const order = activeController ? [activeController, ...controllers.filter(c => c !== activeController)] : controllers;
     for(const c of order){
@@ -925,7 +1202,7 @@ renderer.setAnimationLoop((t, frame) => {
     }
     if(grabbed && activeController){
       const p = activeController.userData.lastFloorPoint;
-      if(p) grabbed.position.copy(p);
+      if(p) grabbed.position.copy(worldToPlaced(p));
       reticle.visible = false;
     }else if(reticlePoint && !hovered){
       reticle.position.copy(reticlePoint);
