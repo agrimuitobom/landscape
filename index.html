@@ -172,6 +172,7 @@
   #xr-dims{ font-size:11px; opacity:.75; text-align:center; }
   #xr-count{ font-size:11px; opacity:.75; padding:0 4px; }
   #xr-top button.unlocked{ background:rgba(158,74,46,.55); }
+  #xr-top button.active-mode{ background:var(--moss); }
   #xr-target{
     pointer-events:auto;
     position:absolute; top:74px; left:50%; transform:translateX(-50%);
@@ -248,6 +249,9 @@
       <tr><td>スティック 左右</td><td>指している物を回転</td></tr>
       <tr><td>スティック 上下</td><td>指している物を拡大・縮小（初期は実寸ロック。MR中の🔒ボタンで切替）</td></tr>
       <tr><td>グリップ（物に向けて）</td><td>その物を削除</td></tr>
+      <tr><td>A / X ボタン</td><td>指している物を複製</td></tr>
+      <tr><td>B / Y ボタン</td><td>直前の操作を元に戻す</td></tr>
+      <tr><td>📐計測ボタン（MR中）</td><td>2点をトリガーで指定して距離を計測</td></tr>
     </table>
 
     <p class="note">
@@ -270,12 +274,14 @@
     <button id="xr-next">▶</button>
     <span id="xr-count">0個</span>
     <button id="xr-lock">🔒実寸</button>
+    <button id="xr-measure">📐計測</button>
+    <button id="xr-undo">戻す</button>
     <button id="xr-clear" class="warn">全削除</button>
     <button id="xr-exit">終了</button>
   </div>
   <div id="xr-target"></div>
   <div id="xr-toast"></div>
-  <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転／上下＝大きさ（🔒中は固定）　・　グリップ＝削除</div>
+  <div id="xr-help">トリガー＝設置／つかむ　・　スティック＝回転／大きさ　・　グリップ＝削除　・　A/X＝複製　B/Y＝戻す</div>
 </div>
 
 <!-- 起動ウォッチドッグ: ライブラリ読込失敗を画面に表示する -->
@@ -406,7 +412,31 @@ const MAT = {
   leafD:  new THREE.MeshStandardMaterial({ color:0x3a5530, roughness:.85, flatShading:true }),
   water:  new THREE.MeshStandardMaterial({ color:0x4e7c8a, roughness:.15, metalness:0,
                                            transparent:true, opacity:.78, side:THREE.DoubleSide }),
+  bamboo: new THREE.MeshStandardMaterial({ color:0xB5A369, roughness:.7,  flatShading:true }),
+  bambooD:new THREE.MeshStandardMaterial({ color:0x8F7D4C, roughness:.75, flatShading:true }),
+  maple:  new THREE.MeshStandardMaterial({ color:0xB0502F, roughness:.85, flatShading:true }),
+  mapleD: new THREE.MeshStandardMaterial({ color:0x8C3A24, roughness:.85, flatShading:true }),
+  deck:   new THREE.MeshStandardMaterial({ color:0x8C6F4F, roughness:.85, flatShading:true }),
 };
+
+/* 砂利・芝生用の斑点テクスチャ */
+function makeSpeckleTexture(base, colors, n, rmin, rmax){
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = base; g.fillRect(0, 0, 512, 512);
+  for(let i=0; i<n; i++){
+    g.fillStyle = colors[i % colors.length];
+    const r = rmin + Math.random() * (rmax - rmin);
+    g.beginPath();
+    g.ellipse(Math.random()*512, Math.random()*512, r, r*(0.6 + Math.random()*0.4), Math.random()*Math.PI, 0, Math.PI*2);
+    g.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
 
 /* 疑似乱数つき岩 */
 function makeRock({ r=0.35, flat=0.72, seed=1, detail=3, mat=MAT.stone } = {}){
@@ -533,6 +563,120 @@ function makeLantern(){
   const roof = add(new THREE.ConeGeometry(0.27, 0.17, 4), 0.945);             // 笠
   roof.rotation.y = Math.PI/4;
   add(new THREE.SphereGeometry(0.05, 8, 6), 1.07);                            // 宝珠
+  return g;
+}
+
+function makeSteppingStones(){
+  const g = new THREE.Group();
+  [[-0.45, -0.5, 7], [0.05, 0, 13], [-0.35, 0.55, 21]].forEach(([x, z, seed], i) => {
+    const s = makeRock({ r:0.24 + 0.03*(i%2), flat:0.22, seed, detail:2, mat: i%2 ? MAT.stone : MAT.stoneD });
+    s.position.set(x, 0, z);
+    g.add(s);
+  });
+  return g;
+}
+
+function makeMaple(){
+  const g = new THREE.Group();
+  const t1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.09, 1.0, 7), MAT.trunk);
+  t1.position.y = 0.5; t1.rotation.z = -0.09;
+  const t2 = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.7, 6), MAT.trunk);
+  t2.position.set(-0.14, 1.15, 0.03); t2.rotation.z = 0.28;
+  g.add(t1, t2);
+  const canopy = (r, sy, x, y, z, mat) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 5), mat);
+    m.scale.y = sy; m.position.set(x, y, z);
+    g.add(m);
+  };
+  canopy(0.70, 0.50, -0.10, 1.60,  0.00, MAT.mapleD);
+  canopy(0.55, 0.48,  0.35, 1.45,  0.10, MAT.maple);
+  canopy(0.45, 0.50, -0.50, 1.35, -0.12, MAT.maple);
+  canopy(0.40, 0.45,  0.05, 1.95, -0.05, MAT.mapleD);
+  return g;
+}
+
+function makeBambooFence(){
+  const g = new THREE.Group();
+  const H = 1.15;
+  for(let x=-0.48; x<=0.481; x+=0.048){
+    const cane = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.021, H, 6), MAT.bamboo);
+    cane.position.set(x, H/2, 0);
+    g.add(cane);
+  }
+  [0.18, 0.55, 0.92].forEach(y => {   // 押縁(横竹)
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 1.02, 6), MAT.bambooD);
+    r.rotation.z = Math.PI/2; r.position.set(0, y, 0.033);
+    g.add(r);
+  });
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.02, 7), MAT.bambooD);  // 玉縁
+  top.rotation.z = Math.PI/2; top.position.y = H + 0.02;
+  g.add(top);
+  return g;
+}
+
+function makeDeck(){
+  const g = new THREE.Group();
+  const W = 1.8, D = 0.9, H = 0.3, n = 6;
+  for(let i=0; i<n; i++){
+    const p = new THREE.Mesh(new THREE.BoxGeometry(W, 0.028, D/n * 0.9), MAT.deck);
+    p.position.set(0, H, -D/2 + D/n * (i + 0.5));
+    g.add(p);
+  }
+  [[0, -D/2 + 0.01], [0, D/2 - 0.01]].forEach(([x, z]) => {  // 幕板
+    const s = new THREE.Mesh(new THREE.BoxGeometry(W, 0.1, 0.022), MAT.wood);
+    s.position.set(x, H - 0.06, z);
+    g.add(s);
+  });
+  [[-W/2+0.08, -D/2+0.08], [W/2-0.08, -D/2+0.08], [-W/2+0.08, D/2-0.08], [W/2-0.08, D/2-0.08], [0, -D/2+0.08], [0, D/2-0.08]].forEach(([x, z]) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, H, 0.07), MAT.wood);
+    leg.position.set(x, H/2, z);
+    g.add(leg);
+  });
+  return g;
+}
+
+function makeTsukubai(){
+  const g = new THREE.Group();
+  const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.25, 0.4, 10), MAT.stoneD);
+  basin.position.y = 0.2;
+  g.add(basin);
+  const water = new THREE.Mesh(new THREE.CircleGeometry(0.155, 24), MAT.water);
+  water.rotation.x = -Math.PI/2; water.position.y = 0.402;
+  g.add(water);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.62, 6), MAT.bambooD);  // 筧の支柱
+  post.position.set(0.38, 0.31, 0);
+  g.add(post);
+  const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.34, 6), MAT.bamboo);    // 筧
+  spout.rotation.z = Math.PI/2; spout.rotation.y = 0.06;
+  spout.position.set(0.22, 0.58, 0);
+  g.add(spout);
+  [[-0.3, 0.12, 2], [0.1, 0.34, 9], [-0.15, -0.3, 15]].forEach(([x, z, seed]) => {  // 役石
+    const s = makeRock({ r:0.09, flat:0.6, seed, detail:1, mat:MAT.stone });
+    s.position.set(x, 0, z);
+    g.add(s);
+  });
+  return g;
+}
+
+function makeGravel(){
+  const g = new THREE.Group();
+  const tex = makeSpeckleTexture('#B4B0A2', ['#A7A396', '#8F8C80', '#C5C1B2', '#7D7A70'], 1500, 2, 5);
+  tex.repeat.set(2, 2);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshStandardMaterial({ map:tex, roughness:1 }));
+  m.rotation.x = -Math.PI/2;
+  m.userData.noShadow = true;   // 地面材は影を落とさない
+  g.add(m);
+  return g;
+}
+
+function makeLawn(){
+  const g = new THREE.Group();
+  const tex = makeSpeckleTexture('#5F7847', ['#4E6639', '#6B8752', '#3F5530', '#77935C'], 2400, 1, 3);
+  tex.repeat.set(2, 2);
+  const m = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshStandardMaterial({ map:tex, roughness:1 }));
+  m.rotation.x = -Math.PI/2;
+  m.userData.noShadow = true;
+  g.add(m);
   return g;
 }
 
@@ -801,6 +945,11 @@ renderer.xr.addEventListener('sessionend', () => {
   sun.target.position.set(0, 0, 0);
   lastTargetText = ''; currentTarget = null;
   xrTargetEl.classList.remove('on');
+  measureMode = false;
+  measurePts.length = 0;
+  measureGroup.clear();
+  measureBtn.classList.remove('active-mode');
+  btnPrev.clear();
   saveLayoutNow();
   refreshPreview();
 });
@@ -974,6 +1123,7 @@ layoutInput.addEventListener('change', async (e) => {
   try{
     const data = JSON.parse(await file.text());
     if(data.app !== 'sekitei' || !Array.isArray(data.items)) throw new Error('形式が違います');
+    if(placedGroup.children.length) pushUndo();
     const missing = applyLayout(data);
     layoutReady = true;
     saveLayoutNow();
@@ -1094,12 +1244,116 @@ function objectUnderRay(c){
   return o.parent === placedGroup ? o : null;
 }
 
+/* ---------- アンドゥ ---------- */
+const undoStack = [];
+function pushUndo(){
+  undoStack.push(JSON.stringify(serializeLayout().items));
+  if(undoStack.length > 30) undoStack.shift();
+}
+function undo(){
+  if(!undoStack.length){ toast('戻せる操作はありません'); return; }
+  applyLayout({ items: JSON.parse(undoStack.pop()) });
+  hovered = null; grabbed = null;
+  scheduleSave();
+  toast('元に戻しました');
+}
+
+/* ---------- 距離計測 ---------- */
+let measureMode = false;
+const measurePts = [];
+const measureGroup = new THREE.Group();
+scene.add(measureGroup);
+
+function fmtDist(d){ return d >= 1 ? d.toFixed(2) + ' m' : Math.round(d * 100) + ' cm'; }
+
+function makeTextSprite(text){
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(35,39,31,.85)';
+  g.beginPath(); g.roundRect(4, 4, 248, 88, 44); g.fill();
+  g.fillStyle = '#EAE7DC';
+  g.font = '700 44px sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, 128, 50);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
+  sp.scale.set(0.32, 0.12, 1);
+  return sp;
+}
+
+function updateMeasureVisuals(){
+  measureGroup.clear();
+  const mat = new THREE.MeshBasicMaterial({ color: 0xC0503C });
+  measurePts.forEach(p => {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 8), mat);
+    s.position.copy(p);
+    measureGroup.add(s);
+  });
+  if(measurePts.length === 2){
+    const [a, b] = measurePts;
+    measureGroup.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([a, b]),
+      new THREE.LineBasicMaterial({ color: 0xC0503C })
+    ));
+    const label = makeTextSprite(fmtDist(a.distanceTo(b)));
+    label.position.copy(a).add(b).multiplyScalar(0.5);
+    label.position.y += 0.08;
+    measureGroup.add(label);
+    toast(`距離: ${fmtDist(a.distanceTo(b))}`);
+  }
+}
+
+/* 計測点: 設置物の表面を優先、なければ床 */
+function addMeasurePoint(c){
+  setRayFrom(c);
+  const hits = raycaster.intersectObjects(placedGroup.children, true);
+  const pt = hits.length ? hits[0].point.clone()
+           : (c.userData.lastFloorPoint ? c.userData.lastFloorPoint.clone() : null);
+  if(!pt){ toast('床か設置物に向けてください'); return; }
+  if(measurePts.length >= 2) measurePts.length = 0;
+  measurePts.push(pt);
+  updateMeasureVisuals();
+  if(measurePts.length === 1) toast('1点目を記録 — 2点目を指定');
+}
+
+/* ---------- 複製 ---------- */
+function duplicateTarget(){
+  const t = grabbed || hovered;
+  if(!t){ toast('複製する物に向けてA/Xを押してください'); return; }
+  pushUndo();
+  const clone = t.clone(true);
+  clone.position.x += 0.4;
+  placedGroup.add(clone);
+  updateCount();
+  scheduleSave();
+  toast(`${t.userData.modelName || ''} を複製しました`);
+}
+
+/* A/X=複製, B/Y=アンドゥ (押した瞬間のみ反応) */
+const btnPrev = new Map();
+function pollButtons(){
+  if(!xrSession) return;
+  for(const src of xrSession.inputSources){
+    const gp = src.gamepad;
+    if(!gp || !gp.buttons || gp.buttons.length < 6) continue;
+    const a = !!gp.buttons[4]?.pressed, b = !!gp.buttons[5]?.pressed;
+    const prev = btnPrev.get(src) || [false, false];
+    if(a && !prev[0]) duplicateTarget();
+    if(b && !prev[1]) undo();
+    btnPrev.set(src, [a, b]);
+  }
+}
+
 /* ---------- 操作 ---------- */
 function onSelectStart(c){
   if(!renderer.xr.isPresenting) return;
   activeController = c;
+  if(measureMode){ addMeasurePoint(c); return; }
   const obj = objectUnderRay(c);
   if(obj){
+    pushUndo();
     grabbed = obj;
     toast('移動中… 離すと確定');
   }else{
@@ -1109,6 +1363,7 @@ function onSelectStart(c){
 
 function onSelectEnd(c){
   if(!renderer.xr.isPresenting) return;
+  if(measureMode){ c.userData.placeOnRelease = false; return; }
   if(grabbed && activeController === c){
     grabbed = null;
     scheduleSave();
@@ -1120,6 +1375,7 @@ function onSelectEnd(c){
     const m = models[activeIndex];
     const p = c.userData.lastFloorPoint;
     if(m && p){
+      pushUndo();
       const inst = m.template.clone(true);
       inst.userData.modelId = m.id;
       inst.userData.modelName = m.name;
@@ -1139,6 +1395,7 @@ function onSqueeze(c){
   if(!renderer.xr.isPresenting) return;
   const obj = objectUnderRay(c);
   if(obj){
+    pushUndo();
     if(grabbed === obj) grabbed = null;
     if(hovered === obj) hovered = null;
     placedGroup.remove(obj);
@@ -1151,16 +1408,22 @@ function onSqueeze(c){
 /* スティック: 左右=回転 / 上下=スケール(実寸ロック中は無効) */
 let scaleLocked = true;
 let lockToastAt = 0;
+let lastStickChangeAt = 0;
 
 function pollThumbsticks(dt){
   const target = grabbed || hovered;
   if(!target || !xrSession) return;
   let changed = false;
+  const beforeChange = () => {   // 連続入力の先頭でだけアンドゥ点を積む
+    const now = performance.now();
+    if(now - lastStickChangeAt > 800) pushUndo();
+    lastStickChangeAt = now;
+  };
   for(const src of xrSession.inputSources){
     const gp = src.gamepad;
     if(!gp || gp.axes.length < 4) continue;
     const x = gp.axes[2], y = gp.axes[3];
-    if(Math.abs(x) > 0.18){ target.rotation.y -= x * 1.8 * dt; changed = true; }
+    if(Math.abs(x) > 0.18){ beforeChange(); target.rotation.y -= x * 1.8 * dt; changed = true; }
     if(Math.abs(y) > 0.18){
       if(scaleLocked){
         const now = performance.now();
@@ -1169,6 +1432,7 @@ function pollThumbsticks(dt){
           toast('実寸ロック中 — 上の🔒ボタンで拡縮を解除できます');
         }
       }else{
+        beforeChange();
         const s = THREE.MathUtils.clamp(target.scale.x * (1 - y * 0.9 * dt), 0.2, 4.0);
         target.scale.setScalar(s);
         changed = true;
@@ -1230,11 +1494,23 @@ function updateTargetInfo(){
 }
 xrTargetEl.addEventListener('click', () => {
   if(currentTarget && Math.abs(currentTarget.scale.x - 1) > 0.005){
+    pushUndo();
     currentTarget.scale.setScalar(1);
     scheduleSave();
     toast('実寸（×1.00）に戻しました');
   }
 });
+
+/* 計測モード切替とアンドゥボタン */
+const measureBtn = document.getElementById('xr-measure');
+measureBtn.addEventListener('click', () => {
+  measureMode = !measureMode;
+  measureBtn.classList.toggle('active-mode', measureMode);
+  measurePts.length = 0;
+  updateMeasureVisuals();
+  toast(measureMode ? '計測モード: 2点をトリガーで指定' : '計測モードを終了しました');
+});
+document.getElementById('xr-undo').addEventListener('click', undo);
 function toast(msg){
   toastEl.textContent = msg;
   toastEl.classList.add('show');
@@ -1255,6 +1531,7 @@ document.getElementById('xr-next').addEventListener('click', () => {
   toast(models[activeIndex].name);
 });
 document.getElementById('xr-clear').addEventListener('click', () => {
+  if(placedGroup.children.length) pushUndo();
   placedGroup.clear();
   hovered = null; grabbed = null;
   updateCount();
@@ -1270,11 +1547,18 @@ document.getElementById('xr-exit').addEventListener('click', () => {
 addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true });
 addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true });
 addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true });
+addModel('飛石（3枚）',   makeSteppingStones(), { preset:true });
 addModel('松の木',        makePine(),    { preset:true });
+addModel('もみじ',        makeMaple(),   { preset:true });
 addModel('低木',          makeShrub(),   { preset:true });
 addModel('木柵（1m）',    makeFence(),   { preset:true });
+addModel('竹垣（1m）',    makeBambooFence(), { preset:true });
+addModel('ウッドデッキ',  makeDeck(),    { preset:true });
 addModel('小川（2m）',    makeStream(),  { preset:true, lift:0.01 });
 addModel('池',            makePond(),    { preset:true, lift:0.01 });
+addModel('蹲踞（つくばい）', makeTsukubai(), { preset:true });
+addModel('砂利敷き（2×2m）', makeGravel(), { preset:true, lift:0.006 });
+addModel('芝生（2m円）',  makeLawn(),    { preset:true, lift:0.005 });
 addModel('石灯籠',        makeLantern(), { preset:true });
 updateLayoutStatus();
 /* 保存済みGLB → 配置レイアウト の順で復元(配置がGLBを参照するため) */
@@ -1323,6 +1607,7 @@ renderer.setAnimationLoop((t, frame) => {
     }
 
     pollThumbsticks(dt);
+    pollButtons();
     updateTargetInfo();
 
     /* 影の範囲をユーザーに追従させる(広い庭でも近くの影が切れないように) */
