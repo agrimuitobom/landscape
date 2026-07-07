@@ -171,6 +171,16 @@
   }
   #xr-dims{ font-size:11px; opacity:.75; text-align:center; }
   #xr-count{ font-size:11px; opacity:.75; padding:0 4px; }
+  #xr-top button.unlocked{ background:rgba(158,74,46,.55); }
+  #xr-target{
+    pointer-events:auto;
+    position:absolute; top:74px; left:50%; transform:translateX(-50%);
+    background:rgba(35,39,31,.72); color:var(--washi);
+    font-size:12px; letter-spacing:.03em;
+    padding:7px 14px; border-radius:30px;
+    display:none; white-space:nowrap;
+  }
+  #xr-target.on{ display:block; }
   #xr-help{
     position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
     background:rgba(35,39,31,.72); color:var(--washi);
@@ -236,7 +246,7 @@
       <tr><td>トリガー（床に向けて）</td><td>選択中のモデルを設置</td></tr>
       <tr><td>トリガー（物に向けて長押し）</td><td>つかんで移動</td></tr>
       <tr><td>スティック 左右</td><td>指している物を回転</td></tr>
-      <tr><td>スティック 上下</td><td>指している物を拡大・縮小</td></tr>
+      <tr><td>スティック 上下</td><td>指している物を拡大・縮小（初期は実寸ロック。MR中の🔒ボタンで切替）</td></tr>
       <tr><td>グリップ（物に向けて）</td><td>その物を削除</td></tr>
     </table>
 
@@ -259,11 +269,13 @@
     </div>
     <button id="xr-next">▶</button>
     <span id="xr-count">0個</span>
+    <button id="xr-lock">🔒実寸</button>
     <button id="xr-clear" class="warn">全削除</button>
     <button id="xr-exit">終了</button>
   </div>
+  <div id="xr-target"></div>
   <div id="xr-toast"></div>
-  <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝大きさ　・　グリップ＝削除</div>
+  <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転／上下＝大きさ（🔒中は固定）　・　グリップ＝削除</div>
 </div>
 
 <!-- 起動ウォッチドッグ: ライブラリ読込失敗を画面に表示する -->
@@ -320,12 +332,32 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
 renderer.setClearColor(0xEAE7DC, 1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a7a, 1.4));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6);
 sun.position.set(2, 4, 1.5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -8; sun.shadow.camera.right = 8;
+sun.shadow.camera.top = 8;   sun.shadow.camera.bottom = -8;
+sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 15;
+sun.shadow.bias = -0.0002;
+sun.shadow.normalBias = 0.02;
 scene.add(sun);
+scene.add(sun.target);
+
+/* MR中に実際の床へ影だけを落とす面(パススルーでは影以外は透明) */
+const shadowGround = new THREE.Mesh(
+  new THREE.PlaneGeometry(30, 30),
+  new THREE.ShadowMaterial({ opacity: 0.32 })
+);
+shadowGround.rotation.x = -Math.PI/2;
+shadowGround.receiveShadow = true;
+shadowGround.visible = false;
+scene.add(shadowGround);
 
 /* プレビュー用の枯山水グラウンド(MR中は非表示) */
 const previewGround = makeKaresansuiGround();
@@ -359,6 +391,7 @@ function makeKaresansuiGround(){
   );
   mesh.rotation.x = -Math.PI/2;
   mesh.position.y = -0.002;
+  mesh.receiveShadow = true;
   return mesh;
 }
 
@@ -578,6 +611,12 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null }
   const center = box.getCenter(new THREE.Vector3());
   rawRoot.position.sub(new THREE.Vector3(center.x, box.min.y, center.z));
   rawRoot.position.y += lift;
+  rawRoot.traverse(o => {
+    if(o.isMesh){
+      o.castShadow = o.material !== MAT.water;   // 水面は影を落とさない
+      o.receiveShadow = true;
+    }
+  });
   const template = new THREE.Group();
   template.add(rawRoot);
   const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset };
@@ -735,6 +774,7 @@ renderer.xr.addEventListener('sessionstart', () => {
   previewGround.visible = false;
   if(previewObj){ scene.remove(previewObj); previewObj = null; }
   renderer.setClearColor(0x000000, 0);   // パススルー
+  shadowGround.visible = true;
   setupHitTest();
   initAnchor(xrSession);
   refreshXRLabel();
@@ -755,6 +795,12 @@ renderer.xr.addEventListener('sessionend', () => {
   xrAnchor = null; needCreateAnchor = false;
   anchorRoot.position.set(0, 0, 0);
   anchorRoot.quaternion.identity();
+  shadowGround.visible = false;
+  shadowGround.position.set(0, 0, 0);
+  sun.position.set(2, 4, 1.5);
+  sun.target.position.set(0, 0, 0);
+  lastTargetText = ''; currentTarget = null;
+  xrTargetEl.classList.remove('on');
   saveLayoutNow();
   refreshPreview();
 });
@@ -865,6 +911,7 @@ function instantiateFromItem(m, item){
   const inst = m.template.clone(true);
   inst.userData.modelId = m.id;
   inst.userData.modelName = m.name;
+  inst.userData.baseSize = m.size;
   inst.position.fromArray(item.pos);
   inst.rotation.y = item.rotY || 0;
   inst.scale.setScalar(THREE.MathUtils.clamp(item.scale || 1, 0.05, 10));
@@ -1076,6 +1123,7 @@ function onSelectEnd(c){
       const inst = m.template.clone(true);
       inst.userData.modelId = m.id;
       inst.userData.modelName = m.name;
+      inst.userData.baseSize = m.size;
       placedGroup.add(inst);
       inst.position.copy(worldToPlaced(p));
       const cam = renderer.xr.getCamera();
@@ -1100,7 +1148,10 @@ function onSqueeze(c){
   }
 }
 
-/* スティック: 左右=回転 / 上下=スケール */
+/* スティック: 左右=回転 / 上下=スケール(実寸ロック中は無効) */
+let scaleLocked = true;
+let lockToastAt = 0;
+
 function pollThumbsticks(dt){
   const target = grabbed || hovered;
   if(!target || !xrSession) return;
@@ -1111,9 +1162,17 @@ function pollThumbsticks(dt){
     const x = gp.axes[2], y = gp.axes[3];
     if(Math.abs(x) > 0.18){ target.rotation.y -= x * 1.8 * dt; changed = true; }
     if(Math.abs(y) > 0.18){
-      const s = THREE.MathUtils.clamp(target.scale.x * (1 - y * 0.9 * dt), 0.2, 4.0);
-      target.scale.setScalar(s);
-      changed = true;
+      if(scaleLocked){
+        const now = performance.now();
+        if(now - lockToastAt > 2500){
+          lockToastAt = now;
+          toast('実寸ロック中 — 上の🔒ボタンで拡縮を解除できます');
+        }
+      }else{
+        const s = THREE.MathUtils.clamp(target.scale.x * (1 - y * 0.9 * dt), 0.2, 4.0);
+        target.scale.setScalar(s);
+        changed = true;
+      }
     }
   }
   if(changed) scheduleSave();
@@ -1132,6 +1191,50 @@ function refreshXRLabel(){
   xrDimsEl.textContent  = m ? fmtDims(m.size) : '—';
 }
 function updateCount(){ xrCountEl.textContent = placedGroup.children.length + '個'; }
+
+/* 実寸ロック切替 */
+const lockBtn = document.getElementById('xr-lock');
+function refreshLockBtn(){
+  lockBtn.textContent = scaleLocked ? '🔒実寸' : '🔓拡縮可';
+  lockBtn.classList.toggle('unlocked', !scaleLocked);
+}
+lockBtn.addEventListener('click', () => {
+  scaleLocked = !scaleLocked;
+  refreshLockBtn();
+  toast(scaleLocked ? '実寸ロック: 大きさは変わりません' : '拡縮を許可しました（スティック上下）');
+});
+refreshLockBtn();
+
+/* 指している/つかんでいる物の実寸・倍率表示 */
+const xrTargetEl = document.getElementById('xr-target');
+let currentTarget = null;
+let lastTargetText = '';
+
+function updateTargetInfo(){
+  const target = grabbed || hovered;
+  currentTarget = target;
+  if(!target){
+    if(lastTargetText){ lastTargetText = ''; xrTargetEl.classList.remove('on'); }
+    return;
+  }
+  const base = target.userData.baseSize;
+  const s = target.scale.x;
+  const dims = base ? fmtDims({ x: base.x * s, y: base.y * s, z: base.z * s }) : '';
+  const scaleNote = Math.abs(s - 1) > 0.005 ? `　×${s.toFixed(2)} — タップで実寸へ` : '';
+  const text = `${target.userData.modelName || ''}　${dims}${scaleNote}`;
+  if(text !== lastTargetText){
+    lastTargetText = text;
+    xrTargetEl.textContent = text;
+    xrTargetEl.classList.add('on');
+  }
+}
+xrTargetEl.addEventListener('click', () => {
+  if(currentTarget && Math.abs(currentTarget.scale.x - 1) > 0.005){
+    currentTarget.scale.setScalar(1);
+    scheduleSave();
+    toast('実寸（×1.00）に戻しました');
+  }
+});
 function toast(msg){
   toastEl.textContent = msg;
   toastEl.classList.add('show');
@@ -1220,6 +1323,13 @@ renderer.setAnimationLoop((t, frame) => {
     }
 
     pollThumbsticks(dt);
+    updateTargetInfo();
+
+    /* 影の範囲をユーザーに追従させる(広い庭でも近くの影が切れないように) */
+    const xrCam = renderer.xr.getCamera();
+    sun.position.set(xrCam.position.x + 2, 4, xrCam.position.z + 1.5);
+    sun.target.position.set(xrCam.position.x, 0, xrCam.position.z);
+    shadowGround.position.set(xrCam.position.x, 0, xrCam.position.z);
   }else{
     if(previewObj) previewObj.rotation.y += dt * 0.35;
     controls.update();
