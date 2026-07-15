@@ -229,6 +229,9 @@
       <tr><td>スティック 左右</td><td>指している物を回転</td></tr>
       <tr><td>スティック 上下</td><td>指している物を拡大・縮小</td></tr>
       <tr><td>グリップ（物に向けて）</td><td>その物を削除</td></tr>
+      <tr><td>A / B ボタン（右手）</td><td>設置するモデルを次へ / 前へ切り替え</td></tr>
+      <tr><td>X ボタン 長押し（左手）</td><td>設置した物を全削除</td></tr>
+      <tr><td>Y ボタン（左手）</td><td>MRを終了</td></tr>
     </table>
 
     <p class="note">
@@ -674,10 +677,17 @@ startBtn.addEventListener('click', async () => {
 
 renderer.xr.addEventListener('sessionstart', () => {
   launcher.style.display = 'none';
-  xrOverlay.classList.add('on');
   previewGround.visible = false;
   if(previewObj){ scene.remove(previewObj); previewObj = null; }
   renderer.setClearColor(0x000000, 0);   // パススルー
+  /* dom-overlayが実際に有効になったときだけHTML製UIを使う。
+     Meta Questのブラウザは非対応なので、代わりに3D HUDを表示する */
+  const domOverlayActive = !!(xrSession && xrSession.domOverlayState && xrSession.domOverlayState.type);
+  if(domOverlayActive) xrOverlay.classList.add('on');
+  hudActive = !domOverlayActive;
+  hud.visible = hudActive;
+  hudSnap = true;
+  hudDirty = true;
   setupHitTest();
   refreshXRLabel();
   updateCount();
@@ -690,9 +700,12 @@ renderer.xr.addEventListener('sessionend', () => {
   previewGround.visible = true;
   renderer.setClearColor(0xEAE7DC, 1);
   hitSources.clear();
+  btnState.clear();
   hovered = null; grabbed = null;
   boxHelper.visible = false;
   reticle.visible = false;
+  hud.visible = false;
+  hudActive = false;
   refreshPreview();
 });
 
@@ -880,36 +893,154 @@ function refreshXRLabel(){
   const m = models[activeIndex];
   xrModelEl.textContent = m ? m.name : '—';
   xrDimsEl.textContent  = m ? fmtDims(m.size) : '—';
+  hudDirty = true;
 }
-function updateCount(){ xrCountEl.textContent = placedGroup.children.length + '個'; }
+function updateCount(){
+  xrCountEl.textContent = placedGroup.children.length + '個';
+  hudDirty = true;
+}
 function toast(msg){
   toastEl.textContent = msg;
   toastEl.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+  hudToastMsg = msg;
+  hudToastUntil = performance.now() + 1800;
+  hudDirty = true;
 }
 
-document.getElementById('xr-prev').addEventListener('click', () => {
+function cycleModel(dir){
   if(!models.length) return;
-  activeIndex = (activeIndex - 1 + models.length) % models.length;
+  activeIndex = (activeIndex + dir + models.length) % models.length;
   refreshXRLabel(); refreshLibraryUI();
   toast(models[activeIndex].name);
-});
-document.getElementById('xr-next').addEventListener('click', () => {
-  if(!models.length) return;
-  activeIndex = (activeIndex + 1) % models.length;
-  refreshXRLabel(); refreshLibraryUI();
-  toast(models[activeIndex].name);
-});
-document.getElementById('xr-clear').addEventListener('click', () => {
+}
+function clearAllPlaced(){
   placedGroup.clear();
   hovered = null; grabbed = null;
   updateCount();
   toast('すべて削除しました');
-});
+}
+
+document.getElementById('xr-prev').addEventListener('click', () => cycleModel(-1));
+document.getElementById('xr-next').addEventListener('click', () => cycleModel(1));
+document.getElementById('xr-clear').addEventListener('click', clearAllPlaced);
 document.getElementById('xr-exit').addEventListener('click', () => {
   if(xrSession) xrSession.end();
 });
+
+/* ---------- XR内HUD（dom-overlay非対応ブラウザ = Meta Quest用） ---------- */
+let hudActive = false;
+let hudSnap = false;
+let hudDirty = true;
+let hudToastMsg = '';
+let hudToastUntil = 0;
+
+const hud = makeHUD();
+hud.visible = false;
+scene.add(hud);
+
+const hudCamPos = new THREE.Vector3();
+const hudFwd = new THREE.Vector3();
+const hudTarget = new THREE.Vector3();
+
+function makeHUD(){
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 340;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.52, 0.52 * canvas.height / canvas.width),
+    new THREE.MeshBasicMaterial({ map:tex, transparent:true, depthTest:false, depthWrite:false })
+  );
+  mesh.renderOrder = 999;
+  mesh.userData.canvas = canvas;
+  mesh.userData.tex = tex;
+  return mesh;
+}
+
+function roundRectPath(g, x, y, w, h, r){
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+function drawHUD(){
+  const canvas = hud.userData.canvas;
+  const g = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = 'rgba(35,39,31,0.82)';
+  roundRectPath(g, 0, 0, W, H, 40); g.fill();
+
+  const m = models[activeIndex];
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  g.fillStyle = '#EAE7DC';
+  g.font = 'bold 56px "Zen Kaku Gothic New", sans-serif';
+  g.fillText(`◀ B　 ${m ? m.name : '—'} 　A ▶`, W/2, 82);
+  g.font = '36px "Zen Kaku Gothic New", sans-serif';
+  g.fillStyle = 'rgba(234,231,220,0.82)';
+  g.fillText(`${m ? fmtDims(m.size) : '—'}　・　設置 ${placedGroup.children.length}個`, W/2, 142);
+  g.font = '29px "Zen Kaku Gothic New", sans-serif';
+  g.fillStyle = 'rgba(234,231,220,0.62)';
+  g.fillText('トリガー＝設置／つかむ　・　スティック＝回転・大きさ　・　グリップ＝削除', W/2, 200);
+  g.fillText('A/B＝モデル切替　・　X長押し＝全削除　・　Y＝終了', W/2, 244);
+
+  if(hudToastMsg && performance.now() < hudToastUntil){
+    g.fillStyle = 'rgba(95,112,82,0.95)';
+    roundRectPath(g, W/2 - 340, H - 72, 680, 58, 29); g.fill();
+    g.fillStyle = '#EAE7DC';
+    g.font = 'bold 34px "Zen Kaku Gothic New", sans-serif';
+    g.fillText(hudToastMsg, W/2, H - 30);
+  }
+  hud.userData.tex.needsUpdate = true;
+}
+
+function updateHUD(){
+  if(!hudActive) return;
+  if(hudToastMsg && performance.now() > hudToastUntil){ hudToastMsg = ''; hudDirty = true; }
+  if(hudDirty){ drawHUD(); hudDirty = false; }
+  const cam = renderer.xr.getCamera();
+  hudCamPos.setFromMatrixPosition(cam.matrixWorld);
+  hudFwd.set(0, 0, -1).transformDirection(cam.matrixWorld);
+  hudTarget.copy(hudCamPos).addScaledVector(hudFwd, 1.15);
+  hudTarget.y -= 0.18;
+  if(hudSnap){ hud.position.copy(hudTarget); hudSnap = false; }
+  else hud.position.lerp(hudTarget, 0.08);
+  hud.lookAt(hudCamPos);
+}
+
+/* ---------- コントローラーのボタン（A/B=モデル切替, X長押し=全削除, Y=終了） ---------- */
+const btnState = new Map();   // XRInputSource -> {b4, b5, holdStart, holdFired}
+
+function pollButtons(){
+  if(!xrSession) return;
+  const now = performance.now();
+  for(const src of xrSession.inputSources){
+    const gp = src.gamepad;
+    if(!gp || !gp.buttons || gp.buttons.length < 6) continue;
+    let st = btnState.get(src);
+    if(!st){ st = { b4:false, b5:false, holdStart:0, holdFired:false }; btnState.set(src, st); }
+    const b4 = !!(gp.buttons[4] && gp.buttons[4].pressed);   // A / X
+    const b5 = !!(gp.buttons[5] && gp.buttons[5].pressed);   // B / Y
+    if(src.handedness === 'right'){
+      if(b4 && !st.b4) cycleModel(1);
+      if(b5 && !st.b5) cycleModel(-1);
+    }else if(src.handedness === 'left'){
+      if(b4 && !st.b4){ st.holdStart = now; st.holdFired = false; }
+      if(b4 && !st.holdFired && now - st.holdStart > 1200){
+        st.holdFired = true;
+        clearAllPlaced();
+      }
+      if(b5 && !st.b5 && xrSession) xrSession.end();
+    }
+    st.b4 = b4; st.b5 = b5;
+  }
+}
 
 /* プリセット登録（addModelが参照するUI要素の定義後に実行する） */
 addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true });
@@ -969,6 +1100,8 @@ renderer.setAnimationLoop((t, frame) => {
     }
 
     pollThumbsticks(dt);
+    pollButtons();
+    updateHUD();
   }else{
     if(previewObj) previewObj.rotation.y += dt * 0.35;
     controls.update();
