@@ -272,8 +272,11 @@
   window.addEventListener('error', function(e){
     if(!window.__appReady) window.__bootError(e.message || 'スクリプトエラー');
   }, true);
+  window.addEventListener('unhandledrejection', function(e){
+    if(!window.__appReady) window.__bootError((e.reason && e.reason.message) || '初期化中のエラー');
+  });
   setTimeout(function(){
-    if(!window.__appReady) window.__bootError('3Dライブラリの読み込みがタイムアウトしました');
+    if(!window.__appReady) window.__bootError('アプリの初期化がタイムアウトしました');
   }, 12000);
   if(location.protocol === 'file:'){
     window.__bootError('file:// で開かれています');
@@ -295,8 +298,6 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
-window.__appReady = true;   // ここまで来ればライブラリ読込は成功
 
 /* ================= 基本セットアップ ================= */
 
@@ -616,24 +617,42 @@ const supportEl = document.getElementById('support');
 const startBtn = document.getElementById('start-btn');
 let xrSupported = false;
 
+function setSupport(text, cls){
+  supportEl.textContent = text;
+  supportEl.className = cls;
+}
+
 if(navigator.xr){
+  let settled = false;
+  // isSessionSupported が応答しない環境があるため、待ちすぎたら試行可能にして進める
+  const watchdog = setTimeout(() => {
+    if(settled) return;
+    settled = true;
+    xrSupported = true;
+    startBtn.disabled = false;
+    setSupport('△ MR対応の確認が完了しませんでした。「MRで開始」で直接試せます。進まない場合はブラウザを最新に更新し、Questを再起動してください。', 'ng');
+  }, 8000);
   navigator.xr.isSessionSupported('immersive-ar').then(ok => {
+    if(settled) return;
+    settled = true;
+    clearTimeout(watchdog);
     xrSupported = ok;
     if(ok){
-      supportEl.textContent = '✔ このブラウザはMR（immersive-ar）に対応しています。';
-      supportEl.className = 'ok';
+      setSupport('✔ このブラウザはMR（immersive-ar）に対応しています。', 'ok');
       startBtn.disabled = false;
     }else{
-      supportEl.textContent = '✕ immersive-ar 非対応です。Meta Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）';
-      supportEl.className = 'ng';
+      setSupport('✕ immersive-ar 非対応です。Meta Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）', 'ng');
     }
   }).catch(() => {
-    supportEl.textContent = '✕ WebXRの確認に失敗しました。Quest本体のブラウザ＋HTTPSで開いてください。（このPCではプレビューのみ可能）';
-    supportEl.className = 'ng';
+    if(settled) return;
+    settled = true;
+    clearTimeout(watchdog);
+    xrSupported = true;   // 確認に失敗しただけの可能性があるので試行は許可する
+    startBtn.disabled = false;
+    setSupport('△ WebXRの確認に失敗しました。「MRで開始」で直接試せます。Quest本体のブラウザ＋HTTPSで開いているか確認してください。', 'ng');
   });
 }else{
-  supportEl.textContent = '✕ WebXR非対応ブラウザです。Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）';
-  supportEl.className = 'ng';
+  setSupport('✕ WebXR非対応ブラウザです。Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）', 'ng');
 }
 
 const launcher = document.getElementById('launcher');
@@ -900,6 +919,8 @@ document.getElementById('xr-exit').addEventListener('click', () => {
 
 refreshLibraryUI();
 refreshPreview();
+
+window.__appReady = true;   // 初期化が最後まで到達した時点で起動成功とみなす
 
 /* ================= メインループ ================= */
 const clock = new THREE.Clock();
