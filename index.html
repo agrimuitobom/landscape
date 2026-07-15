@@ -260,14 +260,16 @@
 (function(){
   var el = function(){ return document.getElementById('support'); };
   window.__bootError = function(msg){
-    var s = el(); if(!s || window.__appReady) return;
+    var s = el(); if(!s || window.__appReady || window.__bootErrorShown) return;
+    window.__bootErrorShown = true;   // 最初のエラー（根本原因）を後続で上書きしない
     s.className = 'ng';
     s.innerHTML =
       '✕ アプリの起動に失敗しました。<br>' +
       (msg ? '（' + msg + '）<br>' : '') +
       '・チャット内プレビューでは動きません。<b>GitHub Pagesにアップして</b>そのURLを開いてください。<br>' +
       '・file:// で直接開いている場合もWebXRは動きません（HTTPS必須）。<br>' +
-      '・ネットワークで cdn.jsdelivr.net がブロックされていないか確認してください。';
+      '・index.html と一緒に <b>vendor フォルダもアップロード</b>されているか確認してください。<br>' +
+      '・ブラウザのアップデートがある場合は更新してから再読み込みしてください。';
   };
   window.addEventListener('error', function(e){
     if(!window.__appReady) window.__bootError(e.message || 'スクリプトエラー');
@@ -281,14 +283,17 @@
   if(location.protocol === 'file:'){
     window.__bootError('file:// で開かれています');
   }
+  if(!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('importmap'))){
+    window.__bootError('このブラウザは import maps に非対応です。ブラウザを最新版に更新してください');
+  }
 })();
 </script>
 
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
   }
 }
 </script>
@@ -497,7 +502,7 @@ function makeLantern(){
 
 const loader = new GLTFLoader();
 const draco = new DRACOLoader();
-draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
+draco.setDecoderPath('./vendor/three/addons/libs/draco/');
 loader.setDRACOLoader(draco);
 
 /** @type {{name:string, template:THREE.Group, size:THREE.Vector3, tris:number, preset:boolean}[]} */
@@ -531,17 +536,6 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false } = {}){
   refreshXRLabel();
   refreshPreview();
 }
-
-/* プリセット登録 */
-addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true });
-addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true });
-addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true });
-addModel('松の木',        makePine(),    { preset:true });
-addModel('低木',          makeShrub(),   { preset:true });
-addModel('木柵（1m）',    makeFence(),   { preset:true });
-addModel('小川（2m）',    makeStream(),  { preset:true, lift:0.01 });
-addModel('池',            makePond(),    { preset:true, lift:0.01 });
-addModel('石灯籠',        makeLantern(), { preset:true });
 
 /* ---------- ファイル読み込み ---------- */
 const fileInput = document.getElementById('file-input');
@@ -916,6 +910,17 @@ document.getElementById('xr-clear').addEventListener('click', () => {
 document.getElementById('xr-exit').addEventListener('click', () => {
   if(xrSession) xrSession.end();
 });
+
+/* プリセット登録（addModelが参照するUI要素の定義後に実行する） */
+addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true });
+addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true });
+addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true });
+addModel('松の木',        makePine(),    { preset:true });
+addModel('低木',          makeShrub(),   { preset:true });
+addModel('木柵（1m）',    makeFence(),   { preset:true });
+addModel('小川（2m）',    makeStream(),  { preset:true, lift:0.01 });
+addModel('池',            makePond(),    { preset:true, lift:0.01 });
+addModel('石灯籠',        makeLantern(), { preset:true });
 
 refreshLibraryUI();
 refreshPreview();
