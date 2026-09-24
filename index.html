@@ -108,6 +108,13 @@
   .m-dims .heavy{ color:#8A4A2E; font-weight:700; }
   .m-credit{ display:block; font-size:10.5px; color:var(--stone); margin-top:2px;
              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .m-dims b{ color:var(--ink); font-weight:700; }
+  .m-density{
+    display:block; margin-top:5px; max-width:100%;
+    font-family:inherit; font-size:11px; color:var(--ink-soft);
+    background:rgba(255,255,255,.5); border:1px solid var(--line); border-radius:4px;
+    padding:3px 4px;
+  }
   .m-del{
     flex:none; border:none; background:none; cursor:pointer;
     color:var(--stone); font-size:15px; padding:4px 6px;
@@ -251,7 +258,7 @@
       <tr><td>トリガー（床に向けて）</td><td>選択中のモデルを設置</td></tr>
       <tr><td>トリガー（物に向けて長押し）</td><td>つかんで移動</td></tr>
       <tr><td>スティック 左右</td><td>指している物を回転</td></tr>
-      <tr><td>スティック 上下</td><td>指している物を拡大・縮小（初期は実寸ロック。MR中の🔒ボタンで切替）</td></tr>
+      <tr><td>スティック 上下</td><td>⬍根入れモード（初期）: 下で沈める・上で持ち上げる。地表と「1/3根入れ」で一旦止まる<br>⤢拡縮モード: 大きさを変える（MR中の上部ボタンで切替）</td></tr>
       <tr><td>グリップ（物に向けて）</td><td>その物を削除</td></tr>
       <tr><td>A / X ボタン</td><td>指している物を複製</td></tr>
       <tr><td>B / Y ボタン</td><td>直前の操作を元に戻す</td></tr>
@@ -263,6 +270,7 @@
       ※ Questにダウンロードした .glb は「GLBファイルを追加」から読み込めます。<br>
       ※ スキャンは Scaniverse / Polycam 等でGLB書き出し。1個あたり10万ポリゴン以下推奨。<br>
       ※ 全員に共通の「リアル素材」は、リポジトリの presets/ フォルダにGLBを置いて登録します（手順は presets/README.md）。<br>
+      ※ 重量は形状から求めた体積×比重の<b>目安</b>です（根入れで埋めた部分も含む）。スキャン精度や石質で2割程度ずれることがあるため、重機・吊り具は余裕を見て選んでください。<br>
       ※ 配置と読み込んだGLBはこの端末に自動保存され、次回開いたとき復元されます。<br>
       ※ Questでは空間アンカーで前回と同じ実際の位置に配置を復元します。
     </p>
@@ -278,7 +286,7 @@
     </div>
     <button id="xr-next">▶</button>
     <span id="xr-count">0個</span>
-    <button id="xr-lock">🔒実寸</button>
+    <button id="xr-lock">⬍根入れ</button>
     <button id="xr-measure">📐計測</button>
     <button id="xr-undo">戻す</button>
     <button id="xr-clear" class="warn">全削除</button>
@@ -286,7 +294,7 @@
   </div>
   <div id="xr-target"></div>
   <div id="xr-toast"></div>
-  <div id="xr-help">トリガー＝設置／つかむ　・　スティック＝回転／大きさ　・　グリップ＝削除　・　A/X＝複製　B/Y＝戻す</div>
+  <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝根入れ（⤢で大きさ）　・　グリップ＝削除　・　A/X＝複製　B/Y＝戻す</div>
 </div>
 
 <!-- 起動ウォッチドッグ: ライブラリ読込失敗を画面に表示する -->
@@ -346,6 +354,7 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
 renderer.setClearColor(0xEAE7DC, 1);
 renderer.shadowMap.enabled = true;
+renderer.localClippingEnabled = true;   // 根入れした部分を地面で切る
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.95;
@@ -836,6 +845,17 @@ async function dbDelete(id){
     tx.onerror = () => rej(tx.error);
   });
 }
+async function dbPatch(id, patch){
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('glbs', 'readwrite');
+    const store = tx.objectStore('glbs');
+    const req = store.get(id);
+    req.onsuccess = () => { if(req.result) store.put(Object.assign(req.result, patch)); };
+    tx.oncomplete = res;
+    tx.onerror = () => rej(tx.error);
+  });
+}
 async function dbGetAll(){
   const db = await openDB();
   return new Promise((res, rej) => {
@@ -863,8 +883,53 @@ function countTris(root){
   return Math.round(t);
 }
 
+/* 体積(m³)を発散定理(符号付き四面体体積の総和)で求める。
+   底面中心を原点にした状態で計算するので、底が開いたスキャン(接地面未撮影)でも
+   欠けた底面の寄与はほぼ0になり、体積が大きく狂わない。 */
+function computeVolume(root){
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert();
+  const m = new THREE.Matrix4();
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  let total = 0;
+  root.traverse(o => {
+    if(!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    m.multiplyMatrices(inv, o.matrixWorld);
+    const pos = o.geometry.attributes.position, idx = o.geometry.index;
+    const n = idx ? idx.count : pos.count;
+    let v = 0;
+    for(let i=0; i+2<n; i+=3){
+      a.fromBufferAttribute(pos, idx ? idx.getX(i)   : i  ).applyMatrix4(m);
+      b.fromBufferAttribute(pos, idx ? idx.getX(i+1) : i+1).applyMatrix4(m);
+      c.fromBufferAttribute(pos, idx ? idx.getX(i+2) : i+2).applyMatrix4(m);
+      v += a.dot(b.cross(c)) / 6;
+    }
+    total += m.determinant() < 0 ? -v : v;   // 鏡像変換されたメッシュは向きが反転する
+  });
+  return Math.abs(total);
+}
+
+/* 比重(t/m³)の選択肢。重量は 体積×比重 の目安 */
+const DENSITIES = [
+  { v: 2.65, label: '御影石・花崗岩 2.65' },
+  { v: 2.6,  label: '安山岩・一般の庭石 2.6' },
+  { v: 2.3,  label: '砂岩・凝灰岩 2.3' },
+  { v: 0,    label: '重量を出さない（樹木など）' },
+];
+const DEFAULT_DENSITY = 2.6;
+
+/* 推定重量(t)。体積が信頼できない形状(平面・破綻したメッシュ)は null */
+function modelWeight(m, scale = 1){
+  if(!m || !m.density || !m.volume) return null;
+  return m.volume * m.density * scale * scale * scale;
+}
+function fmtWeight(t){
+  if(t == null) return '';
+  return t >= 1 ? `約${t.toFixed(1)}t` : `約${Math.max(10, Math.round(t * 100) * 10)}kg`;
+}
+
 /* 底面中心を原点に正規化してテンプレート化 */
-function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='' } = {}){
+function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='', density=0 } = {}){
   const box = new THREE.Box3().setFromObject(rawRoot);
   if(box.isEmpty()){ alert(`「${name}」にメッシュが見つかりませんでした`); return null; }
   const size = box.getSize(new THREE.Vector3());
@@ -879,7 +944,11 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, 
   });
   const template = new THREE.Group();
   template.add(rawRoot);
-  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset, real, credit };
+  // 体積はバウンディングボックスの2%〜105%に収まるときだけ採用(板状・開いたメッシュ等は除外)
+  let volume = computeVolume(template);
+  const boxVol = size.x * size.y * size.z;
+  if(!(volume >= 0.0005 && volume > boxVol * 0.02 && volume < boxVol * 1.05)) volume = 0;
+  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset, real, credit, volume, density };
   models.push(entry);
   if(select) activeIndex = models.length - 1;
   refreshLibraryUI();
@@ -910,9 +979,9 @@ fileInput.addEventListener('change', async (e) => {
       const name = file.name.replace(/\.(glb|gltf)$/i,'');
       const unitScale = suggestUnitScale(gltf.scene, name);
       gltf.scene.scale.multiplyScalar(unitScale);
-      const entry = addModel(name, gltf.scene, { select:true });
+      const entry = addModel(name, gltf.scene, { select:true, density:DEFAULT_DENSITY });
       if(entry){
-        dbPut({ id: entry.id, name: entry.name, buffer: buf, unitScale, addedAt: Date.now() })
+        dbPut({ id: entry.id, name: entry.name, buffer: buf, unitScale, density: entry.density, addedAt: Date.now() })
           .catch(err => console.warn('GLBの保存に失敗しました（次回起動時は復元されません）:', err));
       }
     }catch(err){
@@ -927,11 +996,12 @@ fileInput.addEventListener('change', async (e) => {
 async function restoreSavedGLBs(){
   try{
     const recs = await dbGetAll();
+    recs.sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));   // 追加した順に並べる(IndexedDBはID順で返すため)
     for(const rec of recs){
       try{
         const gltf = await new Promise((res, rej) => loader.parse(rec.buffer, '', res, rej));
         if(rec.unitScale) gltf.scene.scale.multiplyScalar(rec.unitScale);
-        addModel(rec.name, gltf.scene, { id: rec.id });
+        addModel(rec.name, gltf.scene, { id: rec.id, density: rec.density ?? DEFAULT_DENSITY });
       }catch(err){
         console.warn('保存済みGLBの復元に失敗:', rec.name, err);
       }
@@ -970,7 +1040,7 @@ async function loadManifestPresets(){
     const root = gltf.scene;
     if(item.scale) root.scale.setScalar(Number(item.scale) || 1);
     const credit = [item.credit, item.license].filter(Boolean).join(' · ');
-    addModel(item.name || item.file, root, { preset:true, real:true, id:'m:' + (item.id || item.file), credit });
+    addModel(item.name || item.file, root, { preset:true, real:true, id:'m:' + (item.id || item.file), credit, density: Number(item.density) || 0 });
   }
   realLabelEl.textContent = failed.length ? `リアル素材（${failed.length}件 読み込み失敗: ${failed.join('、')}）` : 'リアル素材';
 }
@@ -981,9 +1051,9 @@ const realListEl = document.getElementById('real-list');
 const presetListEl = document.getElementById('preset-list');
 const fileListEl = document.getElementById('file-list');
 
+function fmtLen(n){ return n >= 1 ? n.toFixed(2)+'m' : Math.round(n*100)+'cm'; }
 function fmtDims(s){
-  const f = (n) => n >= 1 ? n.toFixed(2)+'m' : Math.round(n*100)+'cm';
-  return `${f(s.x)} × ${f(s.z)} × 高${f(s.y)}`;
+  return `${fmtLen(s.x)} × ${fmtLen(s.z)} × 高${fmtLen(s.y)}`;
 }
 
 function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -997,15 +1067,31 @@ function refreshLibraryUI(){
     if(i === activeIndex) li.classList.add('active');
     const heavy = m.tris > 300000;
     const showTris = !m.preset || m.real;
+    const w = modelWeight(m);
+    const densitySelect = m.preset ? '' : `
+        <select class="m-density" title="石の種類（重量の計算に使う比重）">
+          ${DENSITIES.map(d => `<option value="${d.v}"${d.v === m.density ? ' selected' : ''}>${d.label}</option>`).join('')}
+        </select>`;
     li.innerHTML = `
       <span class="mark"></span>
       <span class="m-info">
         <span class="m-name">${escapeHtml(m.name)}</span>
-        <span class="m-dims">${fmtDims(m.size)}${showTris ? `　${(m.tris/10000).toFixed(1)}万△` + (heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : '') : ''}</span>
-        ${m.credit ? `<span class="m-credit">${escapeHtml(m.credit)}</span>` : ''}
+        <span class="m-dims">${fmtDims(m.size)}${w != null ? `　<b>${fmtWeight(w)}</b>` : ''}${showTris ? `　${m.tris >= 10000 ? (m.tris/10000).toFixed(1) + '万' : m.tris}△` +(heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : '') : ''}</span>
+        ${m.density && !m.volume ? '<span class="m-credit">形状から体積を計算できないため重量は出せません</span>' : ''}
+        ${m.credit ? `<span class="m-credit">${escapeHtml(m.credit)}</span>` : ''}${densitySelect}
       </span>
       ${m.preset ? '' : '<button class="m-del" title="削除">✕</button>'}`;
     li.addEventListener('click', () => { activeIndex = i; refreshLibraryUI(); refreshXRLabel(); refreshPreview(); });
+    const sel = li.querySelector('.m-density');
+    if(sel){
+      sel.addEventListener('click', ev => ev.stopPropagation());
+      sel.addEventListener('change', () => {
+        m.density = Number(sel.value);
+        dbPatch(m.id, { density: m.density }).catch(() => {});
+        refreshLibraryUI();
+        updateLayoutStatus();
+      });
+    }
     const del = li.querySelector('.m-del');
     if(del) del.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -1184,6 +1270,50 @@ function updateAnchor(frame){
   }
 }
 
+/* ---------- 設置インスタンス(根入れ用の地面クリップ付き) ----------
+   userData.sink = 根入れ深さ(m)。正=埋める / 負=浮かせる。
+   パススルーでは現実の地面が仮想物を隠してくれないため、各設置物の地表レベルより下を
+   クリッピング平面で描画しない(影も同様)。平面は設置物ごとに持つので傾斜地でも各自の地表で切れる。 */
+function prepareInstance(inst){
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  inst.userData.clipPlane = plane;
+  const withClip = (mat) => { const c = mat.clone(); c.clippingPlanes = [plane]; c.clipShadows = true; return c; };
+  inst.traverse(o => {
+    if(o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(withClip) : withClip(o.material);
+  });
+  return inst;
+}
+function makeInstance(m){
+  const inst = m.template.clone(true);
+  inst.userData.modelId = m.id;
+  inst.userData.modelName = m.name;
+  inst.userData.baseSize = m.size;
+  inst.userData.sink = 0;
+  return prepareInstance(inst);
+}
+function removeInstance(inst){
+  placedGroup.remove(inst);
+  inst.traverse(o => {   // 複製した材質だけ破棄(テクスチャ・形状はテンプレートと共有)
+    if(o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => mt.dispose());
+  });
+}
+function clearPlaced(){
+  for(const o of [...placedGroup.children]) removeInstance(o);
+}
+
+/* 毎フレーム: 各設置物の地表(position.y + sink)の高さにクリッピング平面を合わせる */
+const _ground = new THREE.Vector3();
+function updateClipPlanes(){
+  placedGroup.updateWorldMatrix(true, false);
+  for(const o of placedGroup.children){
+    const pl = o.userData.clipPlane;
+    if(!pl) continue;
+    _ground.set(o.position.x, o.position.y + (o.userData.sink || 0), o.position.z);
+    placedGroup.localToWorld(_ground);
+    pl.constant = -(_ground.y - 0.001);
+  }
+}
+
 function anchorYaw(){
   return new THREE.Euler().setFromQuaternion(anchorRoot.quaternion, 'YXZ').y;
 }
@@ -1208,7 +1338,8 @@ function serializeLayout(){
       name: o.userData.modelName,
       pos: [r(o.position.x), r(o.position.y), r(o.position.z)],
       rotY: r(o.rotation.y),
-      scale: r(o.scale.x)
+      scale: r(o.scale.x),
+      sink: r(o.userData.sink || 0)
     }))
   };
 }
@@ -1220,6 +1351,7 @@ function saveLayoutNow(){
   try{ localStorage.setItem(LS_LAYOUT, JSON.stringify(serializeLayout())); }
   catch(err){ console.warn('配置の保存に失敗:', err); }
   updateLayoutStatus();
+  updateCount();
 }
 function scheduleSave(){
   clearTimeout(saveTimer);
@@ -1227,10 +1359,8 @@ function scheduleSave(){
 }
 
 function instantiateFromItem(m, item){
-  const inst = m.template.clone(true);
-  inst.userData.modelId = m.id;
-  inst.userData.modelName = m.name;
-  inst.userData.baseSize = m.size;
+  const inst = makeInstance(m);
+  inst.userData.sink = Number(item.sink) || 0;
   inst.position.fromArray(item.pos);
   inst.rotation.y = item.rotY || 0;
   inst.scale.setScalar(THREE.MathUtils.clamp(item.scale || 1, 0.05, 10));
@@ -1240,7 +1370,7 @@ function instantiateFromItem(m, item){
 
 /* 配置データを反映して、見つからなかったモデル数を返す */
 function applyLayout(data){
-  placedGroup.clear();
+  clearPlaced();
   let missing = 0;
   for(const item of (data.items || [])){
     const m = models.find(x => x.id === item.id) || models.find(x => x.name === item.name);
@@ -1267,9 +1397,9 @@ function loadSavedLayout(){
 }
 
 function updateLayoutStatus(){
-  const n = placedGroup.children.length;
+  const { n, t, stones } = placedTotals();
   layoutStatusEl.textContent = n
-    ? `配置 ${n}個 — この端末に自動保存されています`
+    ? `配置 ${n}個${stones ? `（石${stones}個・合計${fmtWeight(t)}）` : ''} — この端末に自動保存されています`
     : '配置はまだありません（設置すると自動保存されます）';
 }
 
@@ -1493,7 +1623,7 @@ function duplicateTarget(){
   const t = grabbed || hovered;
   if(!t){ toast('複製する物に向けてA/Xを押してください'); return; }
   pushUndo();
-  const clone = t.clone(true);
+  const clone = prepareInstance(t.clone(true));   // 材質とクリップ平面は複製先専用にする
   clone.position.x += 0.4;
   placedGroup.add(clone);
   updateCount();
@@ -1546,10 +1676,7 @@ function onSelectEnd(c){
     const p = c.userData.lastFloorPoint;
     if(m && p){
       pushUndo();
-      const inst = m.template.clone(true);
-      inst.userData.modelId = m.id;
-      inst.userData.modelName = m.name;
-      inst.userData.baseSize = m.size;
+      const inst = makeInstance(m);
       placedGroup.add(inst);
       inst.position.copy(worldToPlaced(p));
       const cam = renderer.xr.getCamera();
@@ -1568,17 +1695,39 @@ function onSqueeze(c){
     pushUndo();
     if(grabbed === obj) grabbed = null;
     if(hovered === obj) hovered = null;
-    placedGroup.remove(obj);
+    removeInstance(obj);
     updateCount();
     scheduleSave();
     toast('削除しました');
   }
 }
 
-/* スティック: 左右=回転 / 上下=スケール(実寸ロック中は無効) */
+/* スティック: 左右=回転 / 上下=根入れ(実寸ロック中・初期) または 大きさ(ロック解除中) */
 let scaleLocked = true;
-let lockToastAt = 0;
 let lastStickChangeAt = 0;
+let sinkHoldUntil = 0;
+const SINK_SPEED = 0.15;   // m/秒(スティック全倒し)
+
+/* 根入れ深さを変更。地表(0)と1/3根入れを通過するときは一旦止める(造園の目安) */
+function adjustSink(target, y, dt){
+  const now = performance.now();
+  if(now < sinkHoldUntil) return false;
+  const h = (target.userData.baseSize ? target.userData.baseSize.y : 1) * target.scale.x;
+  const old = target.userData.sink || 0;
+  let next = THREE.MathUtils.clamp(old + y * SINK_SPEED * dt, -1.0, h * 0.95);
+  for(const [snap, label] of [[0, '地表（根入れなし）'], [h / 3, '根入れ 1/3']]){
+    if((old < snap && next >= snap) || (old > snap && next <= snap)){
+      next = snap;
+      sinkHoldUntil = now + 450;
+      toast(`${label} — 地上高 ${fmtLen(h - snap)}`);
+      break;
+    }
+  }
+  if(next === old) return false;
+  target.position.y -= next - old;
+  target.userData.sink = next;
+  return true;
+}
 
 function pollThumbsticks(dt){
   const target = grabbed || hovered;
@@ -1595,16 +1744,19 @@ function pollThumbsticks(dt){
     const x = gp.axes[2], y = gp.axes[3];
     if(Math.abs(x) > 0.18){ beforeChange(); target.rotation.y -= x * 1.8 * dt; changed = true; }
     if(Math.abs(y) > 0.18){
+      beforeChange();
       if(scaleLocked){
-        const now = performance.now();
-        if(now - lockToastAt > 2500){
-          lockToastAt = now;
-          toast('実寸ロック中 — 上の🔒ボタンで拡縮を解除できます');
-        }
+        // 上に倒す(y<0)=持ち上げる / 下に倒す=沈める
+        if(adjustSink(target, y, dt)) changed = true;
       }else{
-        beforeChange();
         const s = THREE.MathUtils.clamp(target.scale.x * (1 - y * 0.9 * dt), 0.2, 4.0);
         target.scale.setScalar(s);
+        // 根入れ深さは実寸(m)で保つ。石が小さくなって全部埋まらないよう上限だけ合わせる
+        const maxSink = (target.userData.baseSize ? target.userData.baseSize.y : 1) * s * 0.95;
+        if((target.userData.sink || 0) > maxSink){
+          target.position.y += target.userData.sink - maxSink;
+          target.userData.sink = maxSink;
+        }
         changed = true;
       }
     }
@@ -1624,18 +1776,30 @@ function refreshXRLabel(){
   xrModelEl.textContent = m ? m.name : '—';
   xrDimsEl.textContent  = m ? fmtDims(m.size) : '—';
 }
-function updateCount(){ xrCountEl.textContent = placedGroup.children.length + '個'; }
+/* 設置物の個数と、石(重量が出せるもの)の合計重量 */
+function placedTotals(){
+  let t = 0, stones = 0;
+  for(const o of placedGroup.children){
+    const w = modelWeight(models.find(x => x.id === o.userData.modelId), o.scale.x);
+    if(w != null){ t += w; stones++; }
+  }
+  return { n: placedGroup.children.length, t, stones };
+}
+function updateCount(){
+  const { n, t, stones } = placedTotals();
+  xrCountEl.textContent = n + '個' + (stones ? `・石${fmtWeight(t)}` : '');
+}
 
-/* 実寸ロック切替 */
+/* スティック上下の役割切替: 根入れ(実寸ロック) / 拡縮 */
 const lockBtn = document.getElementById('xr-lock');
 function refreshLockBtn(){
-  lockBtn.textContent = scaleLocked ? '🔒実寸' : '🔓拡縮可';
+  lockBtn.textContent = scaleLocked ? '⬍根入れ' : '⤢拡縮';
   lockBtn.classList.toggle('unlocked', !scaleLocked);
 }
 lockBtn.addEventListener('click', () => {
   scaleLocked = !scaleLocked;
   refreshLockBtn();
-  toast(scaleLocked ? '実寸ロック: 大きさは変わりません' : '拡縮を許可しました（スティック上下）');
+  toast(scaleLocked ? 'スティック上下＝根入れ（大きさは実寸で固定）' : 'スティック上下＝大きさ（実寸ロック解除）');
 });
 refreshLockBtn();
 
@@ -1654,8 +1818,14 @@ function updateTargetInfo(){
   const base = target.userData.baseSize;
   const s = target.scale.x;
   const dims = base ? fmtDims({ x: base.x * s, y: base.y * s, z: base.z * s }) : '';
+  const h = base ? base.y * s : 0;
+  const sink = target.userData.sink || 0;
+  const sinkNote = sink > 0.005 ? `　根入れ${fmtLen(sink)}（${Math.round(sink / h * 100)}%）・地上高${fmtLen(h - sink)}`
+                 : sink < -0.005 ? `　${fmtLen(-sink)}浮かせ` : '';
+  const w = modelWeight(models.find(x => x.id === target.userData.modelId), s);
+  const weightNote = w != null ? `　${fmtWeight(w)}` : '';
   const scaleNote = Math.abs(s - 1) > 0.005 ? `　×${s.toFixed(2)} — タップで実寸へ` : '';
-  const text = `${target.userData.modelName || ''}　${dims}${scaleNote}`;
+  const text = `${target.userData.modelName || ''}　${dims}${sinkNote}${weightNote}${scaleNote}`;
   if(text !== lastTargetText){
     lastTargetText = text;
     xrTargetEl.textContent = text;
@@ -1702,7 +1872,7 @@ document.getElementById('xr-next').addEventListener('click', () => {
 });
 document.getElementById('xr-clear').addEventListener('click', () => {
   if(placedGroup.children.length) pushUndo();
-  placedGroup.clear();
+  clearPlaced();
   hovered = null; grabbed = null;
   updateCount();
   saveLayoutNow();
@@ -1714,10 +1884,10 @@ document.getElementById('xr-exit').addEventListener('click', () => {
 
 /* ================= 起動シーケンス ================= */
 /* プリセット登録(参照するUI要素の宣言より後に実行する必要がある) */
-addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true });
-addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true });
-addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true });
-addModel('飛石（3枚）',   makeSteppingStones(), { preset:true });
+addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true, density:DEFAULT_DENSITY });
+addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true, density:DEFAULT_DENSITY });
+addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true, density:DEFAULT_DENSITY });
+addModel('飛石（3枚）',   makeSteppingStones(), { preset:true, density:DEFAULT_DENSITY });
 addModel('松の木',        makePine(),    { preset:true });
 addModel('もみじ',        makeMaple(),   { preset:true });
 addModel('低木',          makeShrub(),   { preset:true });
@@ -1726,13 +1896,19 @@ addModel('竹垣（1m）',    makeBambooFence(), { preset:true });
 addModel('ウッドデッキ',  makeDeck(),    { preset:true });
 addModel('小川（2m）',    makeStream(),  { preset:true, lift:0.01 });
 addModel('池',            makePond(),    { preset:true, lift:0.01 });
-addModel('蹲踞（つくばい）', makeTsukubai(), { preset:true });
+addModel('蹲踞（つくばい）', makeTsukubai(), { preset:true, density:DEFAULT_DENSITY });
 addModel('砂利敷き（2×2m）', makeGravel(), { preset:true, lift:0.006 });
 addModel('芝生（2m円）',  makeLawn(),    { preset:true, lift:0.005 });
-addModel('石灯籠',        makeLantern(), { preset:true });
+addModel('石灯籠',        makeLantern(), { preset:true, density:DEFAULT_DENSITY });
 updateLayoutStatus();
 /* リアル素材 → 保存済みGLB → 配置レイアウト の順で復元(配置がこれらのモデルを参照するため) */
 loadManifestPresets().then(restoreSavedGLBs).then(loadSavedLayout);
+
+/* 動作確認用(URLに ?debug を付けたときだけ公開) */
+if(new URLSearchParams(location.search).has('debug')){
+  window.__sekitei = { THREE, scene, camera, controls, models, placedGroup, previewGround,
+                       adjustSink, serializeLayout, placedTotals, modelWeight };
+}
 
 /* ================= メインループ ================= */
 const clock = new THREE.Clock();
@@ -1759,7 +1935,10 @@ renderer.setAnimationLoop((t, frame) => {
     }
     if(grabbed && activeController){
       const p = activeController.userData.lastFloorPoint;
-      if(p) grabbed.position.copy(worldToPlaced(p));
+      if(p){
+        grabbed.position.copy(worldToPlaced(p));
+        grabbed.position.y -= grabbed.userData.sink || 0;   // 根入れ深さを保ったまま移動
+      }
       reticle.visible = false;
     }else if(reticlePoint && !hovered){
       reticle.position.copy(reticlePoint);
@@ -1789,6 +1968,7 @@ renderer.setAnimationLoop((t, frame) => {
     if(previewObj) previewObj.rotation.y += dt * 0.35;
     controls.update();
   }
+  updateClipPlanes();
 
   renderer.render(scene, camera);
 });
