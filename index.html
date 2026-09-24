@@ -155,6 +155,14 @@
   .opt-row input{ margin-top:3px; accent-color:var(--moss-deep); width:16px; height:16px; flex:none; }
   .opt-row small{ display:block; font-size:11px; font-weight:400; color:var(--ink-soft); }
   .note{ margin-top:18px; font-size:11.5px; line-height:1.8; color:var(--ink-soft); }
+  .plan-tabs{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:4px; }
+  .plan-tabs button{
+    font-family:inherit; font-size:13px; font-weight:700; cursor:pointer;
+    padding:7px 14px; border-radius:20px; border:1px solid var(--line);
+    background:rgba(255,255,255,.35); color:var(--ink-soft);
+  }
+  .plan-tabs button.active{ background:var(--ink); color:var(--washi); border-color:var(--ink); }
+  .plan-actions button{ font-size:11.5px; padding:8px 4px; }
   .layout-status{ font-size:12px; line-height:1.7; color:var(--ink-soft); margin-bottom:8px; }
 
   /* ---------- MR中オーバーレイ ---------- */
@@ -218,6 +226,8 @@
   }
   .xr-panel .sp-row{ display:flex; gap:8px; margin:6px 0; }
   .xr-panel .sp-row button{ flex:1; }
+  #xr-plan-list{ flex-wrap:wrap; }
+  #xr-plan-list button{ flex:0 0 auto; min-width:60px; }
   .xr-panel .sp-info{ white-space:pre-line; font-size:12px; line-height:1.6; margin-bottom:6px; }
   .xr-panel button{
     font-family:inherit; font-size:13px; font-weight:700; cursor:pointer;
@@ -290,6 +300,13 @@
     </div>
 
     <h2>レイアウト</h2>
+    <div class="plan-tabs" id="plan-tabs"></div>
+    <div class="btn-row plan-actions">
+      <button class="ghost" id="plan-dup-btn">この案を複製</button>
+      <button class="ghost" id="plan-new-btn">空の案を追加</button>
+      <button class="ghost" id="plan-rename-btn">名前変更</button>
+      <button class="ghost" id="plan-del-btn">削除</button>
+    </div>
     <p class="layout-status" id="layout-status">配置はまだありません（設置すると自動保存されます）</p>
     <div class="btn-row">
       <button class="ghost" id="layout-export-btn">書き出し（JSON）</button>
@@ -370,6 +387,7 @@
     <button id="xr-measure">📐計測</button>
     <button id="xr-sun">☀季節</button>
     <button id="xr-ground">⛰地面</button>
+    <button id="xr-plan">📋A案</button>
     <button id="xr-undo">戻す</button>
     <button id="xr-clear" class="warn">全削除</button>
     <button id="xr-exit">終了</button>
@@ -390,6 +408,11 @@
     <div class="sp-info" id="xr-ground-info">—</div>
     <div class="sp-row"><button data-g="record">● 記録モード</button><button data-g="show">地面を表示</button></div>
     <div class="sp-row"><button data-g="undo">最後の点を消す</button><button data-g="clear">すべて消す</button></div>
+  </div>
+  <div id="xr-plan-panel" class="xr-panel">
+    <div class="sp-info" id="xr-plan-info">—</div>
+    <div class="sp-row" id="xr-plan-list"></div>
+    <div class="sp-row"><button data-p="ghost">前の案を重ねる</button><button data-p="dup">複製して新しい案</button></div>
   </div>
   <div id="xr-toast"></div>
   <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝根入れ（⤢で大きさ）　・　グリップ＝削除　・　A/X＝複製　B/Y＝戻す</div>
@@ -1587,7 +1610,7 @@ const _ground = new THREE.Vector3(), _gn = new THREE.Vector3(), _q = new THREE.Q
 function updateClipPlanes(){
   placedGroup.updateWorldMatrix(true, false);
   placedGroup.getWorldQuaternion(_q);
-  for(const o of placedGroup.children){
+  for(const o of [...placedGroup.children, ...ghostGroup.children]){
     const pl = o.userData.clipPlane;
     if(!pl) continue;
     _ground.set(o.position.x, o.position.y + (o.userData.sink || 0) - 0.001, o.position.z);
@@ -1633,8 +1656,10 @@ function saveLayoutNow(){
   clearTimeout(saveTimer);
   saveTimer = null;
   if(!layoutReady) return;
-  try{ localStorage.setItem(LS_LAYOUT, JSON.stringify(serializeLayout())); }
+  const data = serializeLayout();
+  try{ localStorage.setItem(LS_LAYOUT, JSON.stringify(data)); }
   catch(err){ console.warn('配置の保存に失敗:', err); }
+  if(plans){ currentPlan().items = data.items; savePlans(); }
   updateLayoutStatus();
   updateCount();
 }
@@ -1670,16 +1695,15 @@ function applyLayout(data){
 
 function loadSavedLayout(){
   try{
-    const raw = localStorage.getItem(LS_LAYOUT);
-    if(raw){
-      const missing = applyLayout(JSON.parse(raw));
-      if(missing) console.warn(`配置のうち${missing}個はモデルが見つからず復元できませんでした`);
-    }
+    loadPlans();
+    const missing = applyLayout({ items: currentPlan().items });
+    if(missing) console.warn(`配置のうち${missing}個はモデルが見つからず復元できませんでした`);
   }catch(err){
     console.warn('配置の復元に失敗:', err);
   }
   layoutReady = true;
   updateLayoutStatus();
+  refreshPlansUI();
 }
 
 function updateLayoutStatus(){
@@ -1687,6 +1711,7 @@ function updateLayoutStatus(){
   layoutStatusEl.textContent = n
     ? `配置 ${n}個${stones ? `（石${stones}個・合計${fmtWeight(t)}）` : ''} — この端末に自動保存されています`
     : '配置はまだありません（設置すると自動保存されます）';
+  refreshPlansUI();
 }
 
 document.getElementById('layout-export-btn').addEventListener('click', () => {
@@ -1837,6 +1862,139 @@ function objectUnderRay(c){
   while(o.parent && o.parent !== placedGroup) o = o.parent;
   return o.parent === placedGroup ? o : null;
 }
+
+/* ---------- 複数案(A案・B案…) ----------
+   配置は「選択中の案」として保存する。旧形式(LS_LAYOUT のみ)は A案として取り込む */
+const LS_PLANS = 'sekitei.plans.v1';
+const PLAN_IDS = ['A', 'B', 'C', 'D', 'E'];
+let plans = null;   // { active, list: [{ id, name, items }] }
+let ghostPlanId = null;
+const ghostGroup = new THREE.Group();   // 比較用に重ねる別案(半透明・選択不可)
+anchorRoot.add(ghostGroup);
+
+function loadPlans(){
+  try{ plans = JSON.parse(localStorage.getItem(LS_PLANS) || 'null'); }catch(err){ plans = null; }
+  if(!plans || !Array.isArray(plans.list) || !plans.list.length){
+    let items = [];
+    try{ items = (JSON.parse(localStorage.getItem(LS_LAYOUT) || '{}').items) || []; }catch(err){}
+    plans = { active: 'A', list: [{ id: 'A', name: 'A案', items }] };
+    savePlans();
+  }
+  if(!plans.list.some(p => p.id === plans.active)) plans.active = plans.list[0].id;
+}
+function savePlans(){ try{ localStorage.setItem(LS_PLANS, JSON.stringify(plans)); }catch(err){ console.warn('案の保存に失敗:', err); } }
+function currentPlan(){ return plans.list.find(p => p.id === plans.active); }
+
+function switchPlan(id, { quiet = false } = {}){
+  if(!plans || id === plans.active) return;
+  const target = plans.list.find(p => p.id === id);
+  if(!target) return;
+  saveLayoutNow();                     // 今の案を確定してから切り替える
+  const prev = plans.active;
+  plans.active = id;
+  applyLayout({ items: target.items });
+  hovered = null; grabbed = null;
+  undoStack.length = 0;                // 案をまたいだ「戻す」はしない
+  if(ghostPlanId !== null) ghostPlanId = prev;   // 重ね表示中は「直前の案」を重ねる
+  savePlans();
+  rebuildGhost();
+  refreshPlansUI();
+  updateLayoutStatus();
+  if(!quiet) toast(`${target.name}（${target.items.length}個）に切り替えました`);
+}
+function newPlan({ copy }){
+  if(plans.list.length >= PLAN_IDS.length){ alert(`案は${PLAN_IDS.length}つまでです`); return; }
+  saveLayoutNow();
+  const id = PLAN_IDS.find(x => !plans.list.some(p => p.id === x));
+  const src = currentPlan();
+  plans.list.push({ id, name: `${id}案`, items: copy ? JSON.parse(JSON.stringify(src.items)) : [] });
+  savePlans();
+  switchPlan(id, { quiet: true });
+  toast(copy ? `${src.name}を複製して${id}案を作りました` : `${id}案（空）を作りました`);
+}
+function deletePlan(){
+  if(plans.list.length <= 1){ alert('最後の案は削除できません'); return; }
+  const cur = currentPlan();
+  if(!confirm(`${cur.name}（${cur.items.length}個）を削除しますか？`)) return;
+  plans.list = plans.list.filter(p => p !== cur);
+  const next = plans.list[0];
+  plans.active = next.id;
+  applyLayout({ items: next.items });
+  undoStack.length = 0;
+  if(ghostPlanId === cur.id || ghostPlanId === next.id) ghostPlanId = null;
+  savePlans(); rebuildGhost(); refreshPlansUI(); updateLayoutStatus();
+}
+function renamePlan(){
+  const cur = currentPlan();
+  const name = prompt('案の名前', cur.name);
+  if(name && name.trim()){ cur.name = name.trim().slice(0, 20); savePlans(); refreshPlansUI(); }
+}
+
+/* 別案を半透明で重ねる(比較用)。材質は複製済みなので安全に透明化できる */
+function rebuildGhost(){
+  for(const o of [...ghostGroup.children]){
+    ghostGroup.remove(o);
+    o.traverse(c => { if(c.isMesh) (Array.isArray(c.material) ? c.material : [c.material]).forEach(mt => mt.dispose()); });
+  }
+  const plan = ghostPlanId && plans ? plans.list.find(p => p.id === ghostPlanId) : null;
+  if(!plan || plan.id === plans.active) return;
+  for(const item of plan.items){
+    const m = models.find(x => x.id === item.id) || models.find(x => x.name === item.name);
+    if(!m) continue;
+    const g = makeInstance(m);
+    g.userData.sink = Number(item.sink) || 0;
+    g.position.fromArray(item.pos);
+    g.rotation.y = item.rotY || 0;
+    g.scale.setScalar(item.scale || 1);
+    applyGrowth(g);
+    g.traverse(c => {
+      if(!c.isMesh) return;
+      c.castShadow = false;
+      for(const mt of (Array.isArray(c.material) ? c.material : [c.material])){
+        mt.transparent = true; mt.opacity = 0.35; mt.depthWrite = false;
+      }
+    });
+    ghostGroup.add(g);
+  }
+}
+function toggleGhost(){
+  if(ghostPlanId){ ghostPlanId = null; rebuildGhost(); refreshPlansUI(); toast('重ね表示を終了しました'); return; }
+  const other = plans.list.find(p => p.id !== plans.active);
+  if(!other){ toast('比較する別の案がありません（「複製して新しい案」で作れます）'); return; }
+  ghostPlanId = other.id;
+  rebuildGhost(); refreshPlansUI();
+  toast(`${other.name}を半透明で重ねています`);
+}
+
+function refreshPlansUI(){
+  if(!plans) return;
+  const cur = currentPlan();
+  const tabs = document.getElementById('plan-tabs');
+  tabs.innerHTML = '';
+  const xrList = document.getElementById('xr-plan-list');
+  xrList.innerHTML = '';
+  for(const p of plans.list){
+    for(const [parent, label] of [[tabs, `${p.name}（${p.items.length}）`], [xrList, p.name]]){
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.className = p.id === plans.active ? (parent === tabs ? 'active' : 'on') : '';
+      b.addEventListener('click', () => switchPlan(p.id));
+      parent.appendChild(b);
+    }
+  }
+  document.getElementById('xr-plan').textContent = `📋${cur.name}`;
+  const ghost = ghostPlanId ? plans.list.find(p => p.id === ghostPlanId) : null;
+  document.getElementById('xr-plan-info').textContent =
+    `表示中: ${cur.name}（${cur.items.length}個）` + (ghost ? `\n半透明: ${ghost.name}（比較用・選択不可）` : '');
+  document.querySelector('#xr-plan-panel [data-p="ghost"]').classList.toggle('on', !!ghost);
+  document.getElementById('plan-del-btn').disabled = plans.list.length <= 1;
+  document.getElementById('plan-dup-btn').disabled = document.getElementById('plan-new-btn').disabled = plans.list.length >= PLAN_IDS.length;
+}
+
+document.getElementById('plan-dup-btn').addEventListener('click', () => newPlan({ copy: true }));
+document.getElementById('plan-new-btn').addEventListener('click', () => newPlan({ copy: false }));
+document.getElementById('plan-rename-btn').addEventListener('click', renamePlan);
+document.getElementById('plan-del-btn').addEventListener('click', deletePlan);
 
 /* ---------- アンドゥ ---------- */
 const undoStack = [];
@@ -2266,6 +2424,7 @@ function applySeasonTo(root){
 }
 function applySeasonAll(){
   placedGroup.children.forEach(applySeasonTo);
+  ghostGroup.children.forEach(applySeasonTo);
   applySeasonTo(previewObj);
 }
 
@@ -2280,7 +2439,7 @@ function applyGrowth(inst){
   if(!g || g.name !== 'growth') return;
   g.scale.setScalar(growthFactor(models.find(x => x.id === inst.userData.modelId), inst.scale.x));
 }
-function applyGrowthAll(){ placedGroup.children.forEach(applyGrowth); }
+function applyGrowthAll(){ placedGroup.children.forEach(applyGrowth); ghostGroup.children.forEach(applyGrowth); }
 function setGrowYears(y){
   sunState.years = y; saveSunState();
   applyGrowthAll();
@@ -2454,8 +2613,11 @@ function refreshGroundUI(){
   groundPanel.querySelector('[data-g="show"]').classList.toggle('on', terrainShown);
 }
 
+const planPanel = document.getElementById('xr-plan-panel');
+const planBtn = document.getElementById('xr-plan');
 function closeXRPanels(except){
   if(except !== sunPanel){ sunPanel.classList.remove('on'); sunBtn.classList.remove('active-mode'); }
+  if(except !== planPanel){ planPanel.classList.remove('on'); planBtn.classList.remove('active-mode'); }
   if(except !== groundPanel){ groundPanel.classList.remove('on'); groundBtn.classList.toggle('active-mode', groundMode); }
 }
 groundBtn.addEventListener('click', () => {
@@ -2465,6 +2627,18 @@ groundBtn.addEventListener('click', () => {
   refreshGroundUI();
 });
 sunBtn.addEventListener('click', () => closeXRPanels(sunPanel));
+planBtn.addEventListener('click', () => {
+  closeXRPanels(planPanel);
+  planPanel.classList.toggle('on');
+  planBtn.classList.toggle('active-mode', planPanel.classList.contains('on'));
+  refreshPlansUI();
+});
+planPanel.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-p]');
+  if(!b) return;
+  if(b.dataset.p === 'ghost') toggleGhost();
+  if(b.dataset.p === 'dup') newPlan({ copy: true });
+});
 groundPanel.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-g]');
   if(!b) return;
@@ -2513,7 +2687,8 @@ if(new URLSearchParams(location.search).has('debug')){
   window.__sekitei = { THREE, scene, camera, controls, models, placedGroup, previewGround,
                        adjustSink, serializeLayout, placedTotals, modelWeight,
                        sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun,
-                       setGrowYears, growthFactor, setGroundPts, terrainHeight, setTerrainShown, updateClipPlanes, floorPointFor };
+                       setGrowYears, growthFactor, setGroundPts, terrainHeight, setTerrainShown, updateClipPlanes, floorPointFor,
+                       switchPlan, newPlan, getPlans: () => plans, ghostGroup };
 }
 
 /* ================= メインループ ================= */
