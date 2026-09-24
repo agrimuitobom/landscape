@@ -106,6 +106,8 @@
   }
   .m-dims{ font-size:11px; color:var(--ink-soft); margin-top:2px; }
   .m-dims .heavy{ color:#8A4A2E; font-weight:700; }
+  .m-credit{ display:block; font-size:10.5px; color:var(--stone); margin-top:2px;
+             white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .m-del{
     flex:none; border:none; background:none; cursor:pointer;
     color:var(--stone); font-size:15px; padding:4px 6px;
@@ -223,6 +225,8 @@
     <div id="support">デバイスを確認しています…</div>
 
     <h2>ライブラリ</h2>
+    <div class="group-label" id="real-label" hidden>リアル素材</div>
+    <ul class="model-group" id="real-list" hidden></ul>
     <div class="group-label">プリセット</div>
     <ul class="model-group" id="preset-list"></ul>
     <div class="group-label">読み込んだGLB</div>
@@ -258,6 +262,7 @@
       ※ Quest本体のブラウザで開いてください（HTTPS必須・GitHub Pages推奨）。<br>
       ※ Questにダウンロードした .glb は「GLBファイルを追加」から読み込めます。<br>
       ※ スキャンは Scaniverse / Polycam 等でGLB書き出し。1個あたり10万ポリゴン以下推奨。<br>
+      ※ 全員に共通の「リアル素材」は、リポジトリの presets/ フォルダにGLBを置いて登録します（手順は presets/README.md）。<br>
       ※ 配置と読み込んだGLBはこの端末に自動保存され、次回開いたとき復元されます。<br>
       ※ Questでは空間アンカーで前回と同じ実際の位置に配置を復元します。
     </p>
@@ -324,6 +329,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 window.__appReady = true;   // ここまで来ればライブラリ読込は成功
 
@@ -340,10 +347,35 @@ renderer.xr.enabled = true;
 renderer.setClearColor(0xEAE7DC, 1);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a7a, 1.4));
-const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+/* 屋外の空と地面を模した環境マップ。写真スキャン素材(PBR)の質感と映り込みを自然にする */
+function makeOutdoorEnvironment(){
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 128);
+  grad.addColorStop(0.00, '#5E7C9C');   // 天頂
+  grad.addColorStop(0.45, '#9EA8AC');   // 地平線付近
+  grad.addColorStop(0.52, '#5E5B4E');   // 地面(土・砂利)
+  grad.addColorStop(1.00, '#3A382F');
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 128);
+  g.fillStyle = 'rgba(255,250,235,0.9)';   // 太陽(ライトの方向とおおむね合わせる)
+  g.beginPath(); g.arc(190, 26, 7, 0, Math.PI*2); g.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const env = pmrem.fromEquirectangular(tex).texture;
+  tex.dispose(); pmrem.dispose();
+  return env;
+}
+scene.environment = makeOutdoorEnvironment();
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a7a, 0.35));
+const sun = new THREE.DirectionalLight(0xfff6e8, 1.9);
 sun.position.set(2, 4, 1.5);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
@@ -404,8 +436,8 @@ function makeKaresansuiGround(){
 /* ================= プリセット生成 ================= */
 
 const MAT = {
-  stone:  new THREE.MeshStandardMaterial({ color:0x8f8f86, roughness:.95, flatShading:true }),
-  stoneD: new THREE.MeshStandardMaterial({ color:0x6e6f68, roughness:.95, flatShading:true }),
+  stone:  new THREE.MeshStandardMaterial({ color:0x8f8f86, roughness:.95 }),
+  stoneD: new THREE.MeshStandardMaterial({ color:0x6e6f68, roughness:.95 }),
   trunk:  new THREE.MeshStandardMaterial({ color:0x6b4f36, roughness:.9,  flatShading:true }),
   wood:   new THREE.MeshStandardMaterial({ color:0x7a5a3a, roughness:.9,  flatShading:true }),
   leaf:   new THREE.MeshStandardMaterial({ color:0x49683a, roughness:.85, flatShading:true }),
@@ -438,24 +470,107 @@ function makeSpeckleTexture(base, colors, n, rmin, rmax){
   return tex;
 }
 
-/* 疑似乱数つき岩 */
+/* シード付き乱数と3Dバリューノイズ(岩の形状・色むら用) */
+function mulberry32(a){
+  return () => {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function hash3(x, y, z, s){
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(z, 2147483647) + Math.imul(s, 144665);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function valueNoise3(x, y, z, s){
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = xf*xf*(3-2*xf), v = yf*yf*(3-2*yf), w = zf*zf*(3-2*zf);
+  const L = (a, b, t) => a + (b - a) * t;
+  const c = (dx, dy, dz) => hash3(xi+dx, yi+dy, zi+dz, s);
+  return L(
+    L(L(c(0,0,0), c(1,0,0), u), L(c(0,1,0), c(1,1,0), u), v),
+    L(L(c(0,0,1), c(1,0,1), u), L(c(0,1,1), c(1,1,1), u), v), w) * 2 - 1;
+}
+function fbm3(x, y, z, s, oct=4){
+  let a = 0.5, f = 1, sum = 0;
+  for(let i=0; i<oct; i++){ sum += a * valueNoise3(x*f, y*f, z*f, s + i*17); a *= 0.5; f *= 2.03; }
+  return sum;
+}
+
+const MAT_ROCK = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:.93, metalness:0 });
+
+/* 自然石: 割れ面(平面カット)+多重ノイズの起伏+凹部の陰り・上面の苔を頂点色で表現
+   detail: 1=小石 / 2=中 / 3=主役石 */
 function makeRock({ r=0.35, flat=0.72, seed=1, detail=3, mat=MAT.stone } = {}){
-  const geo = new THREE.IcosahedronGeometry(r, detail);
+  const subdiv = { 1: 3, 2: 9, 3: 22 }[detail] || 9;
+  let geo = new THREE.IcosahedronGeometry(1, subdiv);
+  geo.deleteAttribute('normal'); geo.deleteAttribute('uv');
+  geo = mergeVertices(geo);   // 継ぎ目を結合して滑らかな陰影にする
+
+  const rand = mulberry32(seed * 9301 + 49297);
+  // 割れ面: ランダムな方向の平面で数か所削ぐ
+  const cuts = [];
+  const nCuts = detail === 1 ? 2 : 4 + Math.floor(rand() * 3);
+  for(let k=0; k<nCuts; k++){
+    const n = new THREE.Vector3(rand()*2-1, (rand()*2-1) * 0.8, rand()*2-1).normalize();
+    cuts.push({ n, d: 0.62 + rand() * 0.28 });
+  }
+
   const pos = geo.attributes.position;
+  const disp = new Float32Array(pos.count);
   const v = new THREE.Vector3();
   for(let i=0; i<pos.count; i++){
     v.fromBufferAttribute(pos, i);
-    const n =
-      0.16*Math.sin(v.x*4.1 + seed*1.7)*Math.sin(v.y*3.3 + seed) +
-      0.10*Math.sin(v.y*7.2 + seed*0.4)*Math.cos(v.z*5.1) +
-      0.05*Math.sin(v.x*13.0 + seed*2.3)*Math.sin(v.z*11.0);
-    v.multiplyScalar(1 + n);
+    // 大きなうねり + 細かな凹凸
+    const big = fbm3(v.x*1.3, v.y*1.3, v.z*1.3, seed, 3);
+    const fine = detail === 1 ? 0 : fbm3(v.x*6, v.y*6, v.z*6, seed + 101, 3);
+    let k = 1 + 0.22*big + 0.05*fine;
+    v.multiplyScalar(k);
+    for(const c of cuts){
+      const dd = v.dot(c.n);
+      if(dd > c.d) v.addScaledVector(c.n, (c.d - dd) * 0.92);
+    }
+    disp[i] = v.length();
     v.y *= flat;
+    v.multiplyScalar(r);
     pos.setXYZ(i, v.x, v.y, v.z);
   }
+  // 接地面をわずかに平らにして据わりを良くする
+  let minY = Infinity;
+  for(let i=0; i<pos.count; i++) minY = Math.min(minY, pos.getY(i));
+  const floorY = minY + r * flat * 0.12;
+  for(let i=0; i<pos.count; i++) if(pos.getY(i) < floorY) pos.setY(i, floorY - (floorY - pos.getY(i)) * 0.25);
   geo.computeVertexNormals();
+
+  // 頂点色: 基調色のむら・凹部を暗く・上向き面に苔/地衣類
+  const base = new THREE.Color(mat.color);
+  const moss = new THREE.Color(0x4a5a2c);
+  const lichen = new THREE.Color(0xa8a38a);
+  const nrm = geo.attributes.normal;
+  const col = new Float32Array(pos.count * 3);
+  let dmin = Infinity, dmax = -Infinity;
+  for(const d of disp){ dmin = Math.min(dmin, d); dmax = Math.max(dmax, d); }
+  const cc = new THREE.Color();
+  for(let i=0; i<pos.count; i++){
+    const x = pos.getX(i)/r, y = pos.getY(i)/r, z = pos.getZ(i)/r;
+    const cavity = (disp[i] - dmin) / Math.max(1e-5, dmax - dmin);          // 0=凹 1=凸
+    const mottle = fbm3(x*4, y*4, z*4, seed + 7, 3);
+    cc.copy(base).multiplyScalar(0.72 + 0.38*cavity + 0.18*mottle);
+    const up = nrm.getY(i);
+    const mossMask = THREE.MathUtils.smoothstep(up, 0.45, 0.9) *
+                     THREE.MathUtils.smoothstep(fbm3(x*3, y*3, z*3, seed + 33, 3), -0.05, 0.25);
+    cc.lerp(moss, mossMask * 0.55);
+    const lichenMask = THREE.MathUtils.smoothstep(fbm3(x*9, y*9, z*9, seed + 55, 2), 0.28, 0.4);
+    cc.lerp(lichen, lichenMask * 0.2);
+    col[i*3] = cc.r; col[i*3+1] = cc.g; col[i*3+2] = cc.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(geo, mat));
+  g.add(new THREE.Mesh(geo, MAT_ROCK));
   return g;
 }
 
@@ -686,6 +801,7 @@ const loader = new GLTFLoader();
 const draco = new DRACOLoader();
 draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
 loader.setDRACOLoader(draco);
+loader.setMeshoptDecoder(MeshoptDecoder);   // gltf-transform で軽量化したGLB用
 
 /* ---------- 永続化(IndexedDB: GLB / localStorage: 配置・アンカー) ---------- */
 const LS_LAYOUT = 'sekitei.layout.v1';
@@ -732,7 +848,7 @@ function newFileId(){
   return 'f:' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
 }
 
-/** @type {{id:string, name:string, template:THREE.Group, size:THREE.Vector3, tris:number, preset:boolean}[]} */
+/** @type {{id:string, name:string, template:THREE.Group, size:THREE.Vector3, tris:number, preset:boolean, real?:boolean, credit?:string}[]} */
 const models = [];
 let activeIndex = 0;
 
@@ -748,7 +864,7 @@ function countTris(root){
 }
 
 /* 底面中心を原点に正規化してテンプレート化 */
-function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null } = {}){
+function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='' } = {}){
   const box = new THREE.Box3().setFromObject(rawRoot);
   if(box.isEmpty()){ alert(`「${name}」にメッシュが見つかりませんでした`); return null; }
   const size = box.getSize(new THREE.Vector3());
@@ -763,7 +879,7 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null }
   });
   const template = new THREE.Group();
   template.add(rawRoot);
-  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset };
+  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset, real, credit };
   models.push(entry);
   if(select) activeIndex = models.length - 1;
   refreshLibraryUI();
@@ -775,14 +891,28 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null }
 /* ---------- ファイル読み込み ---------- */
 const fileInput = document.getElementById('file-input');
 document.getElementById('add-file-btn').addEventListener('click', () => fileInput.click());
+/* 単位ずれの検出: 庭の素材で30mを超えるものはcm(またはmm)単位で作られている可能性が高い */
+function suggestUnitScale(root, name){
+  const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  if(maxDim <= 30) return 1;
+  const [scale, unit] = maxDim > 3000 ? [0.001, 'mm'] : [0.01, 'cm'];
+  const fixed = maxDim * scale;
+  const fmt = (n) => n >= 1 ? n.toFixed(2) + 'm' : Math.round(n * 100) + 'cm';
+  return confirm(`「${name}」は最大 ${fmt(maxDim)} あります。${unit}単位で作られた素材の可能性があります。\n\n${unit}→m に補正して ${fmt(fixed)} にしますか？\n（キャンセルでそのままの大きさ）`) ? scale : 1;
+}
+
 fileInput.addEventListener('change', async (e) => {
   for(const file of e.target.files){
     try{
       const buf = await file.arrayBuffer();
       const gltf = await new Promise((res, rej) => loader.parse(buf, '', res, rej));
-      const entry = addModel(file.name.replace(/\.(glb|gltf)$/i,''), gltf.scene, { select:true });
+      const name = file.name.replace(/\.(glb|gltf)$/i,'');
+      const unitScale = suggestUnitScale(gltf.scene, name);
+      gltf.scene.scale.multiplyScalar(unitScale);
+      const entry = addModel(name, gltf.scene, { select:true });
       if(entry){
-        dbPut({ id: entry.id, name: entry.name, buffer: buf, addedAt: Date.now() })
+        dbPut({ id: entry.id, name: entry.name, buffer: buf, unitScale, addedAt: Date.now() })
           .catch(err => console.warn('GLBの保存に失敗しました（次回起動時は復元されません）:', err));
       }
     }catch(err){
@@ -800,6 +930,7 @@ async function restoreSavedGLBs(){
     for(const rec of recs){
       try{
         const gltf = await new Promise((res, rej) => loader.parse(rec.buffer, '', res, rej));
+        if(rec.unitScale) gltf.scene.scale.multiplyScalar(rec.unitScale);
         addModel(rec.name, gltf.scene, { id: rec.id });
       }catch(err){
         console.warn('保存済みGLBの復元に失敗:', rec.name, err);
@@ -810,7 +941,43 @@ async function restoreSavedGLBs(){
   }
 }
 
+/* presets/manifest.json に登録されたリアル素材(ダウンロード/スキャンしたGLB)を読み込む */
+async function loadManifestPresets(){
+  let manifest;
+  try{
+    const res = await fetch('presets/manifest.json', { cache:'no-cache' });
+    if(!res.ok) return;
+    manifest = await res.json();
+  }catch(err){
+    return;   // manifest が無い/読めない場合は手続き生成プリセットのみで動く
+  }
+  const list = (Array.isArray(manifest.models) ? manifest.models : []).filter(it => it && it.file);
+  if(!list.length) return;
+
+  realLabelEl.hidden = realListEl.hidden = false;
+  let done = 0;
+  const setProgress = () => { realLabelEl.textContent = `リアル素材（読み込み中 ${done}/${list.length}）`; };
+  setProgress();
+  // 並列に読み込み、登録は manifest の順番で行う
+  const results = await Promise.all(list.map(item =>
+    loader.loadAsync('presets/' + item.file)
+      .then(gltf => ({ item, gltf }), err => ({ item, err }))
+      .finally(() => { done++; setProgress(); })
+  ));
+  const failed = [];
+  for(const { item, gltf, err } of results){
+    if(err){ console.warn('リアル素材の読み込みに失敗:', item.file, err); failed.push(item.name || item.file); continue; }
+    const root = gltf.scene;
+    if(item.scale) root.scale.setScalar(Number(item.scale) || 1);
+    const credit = [item.credit, item.license].filter(Boolean).join(' · ');
+    addModel(item.name || item.file, root, { preset:true, real:true, id:'m:' + (item.id || item.file), credit });
+  }
+  realLabelEl.textContent = failed.length ? `リアル素材（${failed.length}件 読み込み失敗: ${failed.join('、')}）` : 'リアル素材';
+}
+
 /* ---------- ランチャーUI ---------- */
+const realLabelEl = document.getElementById('real-label');
+const realListEl = document.getElementById('real-list');
 const presetListEl = document.getElementById('preset-list');
 const fileListEl = document.getElementById('file-list');
 
@@ -822,17 +989,20 @@ function fmtDims(s){
 function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function refreshLibraryUI(){
+  realListEl.innerHTML = '';
   presetListEl.innerHTML = '';
   fileListEl.innerHTML = '';
   models.forEach((m, i) => {
     const li = document.createElement('li');
     if(i === activeIndex) li.classList.add('active');
     const heavy = m.tris > 300000;
+    const showTris = !m.preset || m.real;
     li.innerHTML = `
       <span class="mark"></span>
       <span class="m-info">
         <span class="m-name">${escapeHtml(m.name)}</span>
-        <span class="m-dims">${fmtDims(m.size)}${m.preset ? '' : `　${(m.tris/10000).toFixed(1)}万△` + (heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : '')}</span>
+        <span class="m-dims">${fmtDims(m.size)}${showTris ? `　${(m.tris/10000).toFixed(1)}万△` + (heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : '') : ''}</span>
+        ${m.credit ? `<span class="m-credit">${escapeHtml(m.credit)}</span>` : ''}
       </span>
       ${m.preset ? '' : '<button class="m-del" title="削除">✕</button>'}`;
     li.addEventListener('click', () => { activeIndex = i; refreshLibraryUI(); refreshXRLabel(); refreshPreview(); });
@@ -845,7 +1015,7 @@ function refreshLibraryUI(){
       if(activeIndex >= models.length) activeIndex = models.length - 1;
       refreshLibraryUI(); refreshXRLabel(); refreshPreview();
     });
-    (m.preset ? presetListEl : fileListEl).appendChild(li);
+    (m.real ? realListEl : m.preset ? presetListEl : fileListEl).appendChild(li);
   });
   if(!fileListEl.children.length){
     fileListEl.innerHTML = '<li style="cursor:default; color:var(--ink-soft); font-size:12px; border-style:dashed;">まだありません — 下のボタンから追加</li>';
@@ -1561,8 +1731,8 @@ addModel('砂利敷き（2×2m）', makeGravel(), { preset:true, lift:0.006 });
 addModel('芝生（2m円）',  makeLawn(),    { preset:true, lift:0.005 });
 addModel('石灯籠',        makeLantern(), { preset:true });
 updateLayoutStatus();
-/* 保存済みGLB → 配置レイアウト の順で復元(配置がGLBを参照するため) */
-restoreSavedGLBs().then(loadSavedLayout);
+/* リアル素材 → 保存済みGLB → 配置レイアウト の順で復元(配置がこれらのモデルを参照するため) */
+loadManifestPresets().then(restoreSavedGLBs).then(loadSavedLayout);
 
 /* ================= メインループ ================= */
 const clock = new THREE.Clock();
