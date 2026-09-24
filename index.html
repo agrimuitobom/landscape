@@ -190,17 +190,48 @@
   }
   #xr-top button:active{ background:var(--moss); }
   #xr-top button.warn{ background:rgba(158,74,46,.55); }
+  #xr-top button, #xr-count, #xr-dims, #xr-model{ white-space:nowrap; }
+  #xr-model-btn{ display:flex; align-items:center; gap:8px; padding:4px 12px 4px 4px !important; }
+  #xr-model-thumb{ width:36px; height:36px; border-radius:50%; background:rgba(234,231,220,.12); object-fit:cover; }
+  #xr-model-thumb:not([src]), #xr-model-thumb[src=""]{ visibility:hidden; }
+  .mb-text{ display:flex; flex-direction:column; align-items:flex-start; }
   #xr-model{
-    font-size:13px; font-weight:700; max-width:200px; text-align:center;
+    font-size:13px; font-weight:700; max-width:180px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
-  #xr-dims{ font-size:11px; opacity:.75; text-align:center; }
+  #xr-dims{ font-size:11px; opacity:.75; font-weight:400; }
+  .mb-caret{ opacity:.7; }
+  #xr-mode-chip{
+    pointer-events:auto; display:none;
+    position:absolute; top:96px; left:16px;
+    background:rgba(192,80,60,.92); color:#fff;
+    font-size:13px; font-weight:700; padding:9px 16px; border-radius:30px; cursor:pointer;
+  }
+  #xr-mode-chip.on{ display:block; }
+  #xr-help.hidden{ display:none; }
+  #xr-palette{ left:50%; right:auto; transform:translateX(-50%); width:min(780px, 94vw); max-height:72vh; overflow-y:auto; }
+  .pal-tabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .pal-tabs button.on{ background:var(--moss); }
+  .pal-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(118px, 1fr)); gap:8px; }
+  .pal-grid button{
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    padding:8px 6px !important; border-radius:12px !important; text-align:center;
+  }
+  .pal-grid button.on{ outline:2px solid var(--washi); background:var(--moss) !important; }
+  .pal-grid img{ width:84px; height:84px; object-fit:contain; }
+  .pal-grid .pn{ font-size:12px; line-height:1.3; }
+  .pal-grid .pd{ font-size:10.5px; font-weight:400; opacity:.75; }
+  .menu-list{ display:flex; flex-direction:column; gap:8px; }
+  .menu-list button{ text-align:left; padding:12px 14px !important; font-size:14px !important; }
+  .menu-list button.warn{ background:rgba(158,74,46,.55); }
+  .menu-list button.confirm{ background:#9E4A2E; }
+  .m-thumb{ width:42px; height:42px; flex:none; object-fit:contain; border-radius:6px; background:rgba(255,255,255,.4); }
   #xr-count{ font-size:11px; opacity:.75; padding:0 4px; }
   #xr-top button.unlocked{ background:rgba(158,74,46,.55); }
   #xr-top button.active-mode{ background:var(--moss); }
   #xr-target{
     pointer-events:auto;
-    position:absolute; top:74px; left:50%; transform:translateX(-50%);
+    position:absolute; top:96px; left:50%; transform:translateX(-50%);
     background:rgba(35,39,31,.72); color:var(--washi);
     font-size:12px; letter-spacing:.03em;
     padding:7px 14px; border-radius:30px;
@@ -215,14 +246,14 @@
   }
   #xr-sun-panel{
     pointer-events:auto; display:none;
-    position:absolute; top:74px; right:16px; width:280px;
+    position:absolute; top:96px; right:16px; width:280px;
     background:rgba(35,39,31,.86); color:var(--washi);
     border-radius:14px; padding:12px 14px; font-size:13px;
   }
   #xr-sun-panel.on, .xr-panel.on{ display:block; }
   .xr-panel{
     pointer-events:auto; display:none;
-    position:absolute; top:74px; right:16px; width:300px;
+    position:absolute; top:96px; right:16px; width:300px;
     background:rgba(35,39,31,.86); color:var(--washi);
     border-radius:14px; padding:12px 14px; font-size:13px;
   }
@@ -366,7 +397,8 @@
       <tr><td>グリップ（物に向けて）</td><td>その物を削除</td></tr>
       <tr><td>A / X ボタン</td><td>指している物を複製</td></tr>
       <tr><td>B / Y ボタン</td><td>直前の操作を元に戻す</td></tr>
-      <tr><td>📐計測ボタン（MR中）</td><td>2点をトリガーで指定して距離を計測</td></tr>
+      <tr><td>上部の素材ボタン（MR中）</td><td>サムネイル一覧から置く素材を選ぶ（石・樹木などで絞り込み）</td></tr>
+      <tr><td>☰ メニュー（MR中）</td><td>距離の計測・季節と日当たり・地面の起伏・案の切替・全削除（2回タップ）</td></tr>
     </table>
 
     <p class="note">
@@ -384,21 +416,31 @@
 
 <div id="xr-overlay">
   <div id="xr-top">
-    <button id="xr-prev">◀</button>
-    <div>
-      <div id="xr-model">—</div>
-      <div id="xr-dims">—</div>
-    </div>
-    <button id="xr-next">▶</button>
+    <button id="xr-model-btn" title="素材を選ぶ">
+      <img id="xr-model-thumb" alt="">
+      <span class="mb-text"><span id="xr-model">—</span><span id="xr-dims">—</span></span>
+      <span class="mb-caret">▾</span>
+    </button>
     <span id="xr-count">0個</span>
     <button id="xr-lock">⬍根入れ</button>
-    <button id="xr-measure">📐計測</button>
-    <button id="xr-sun">☀季節</button>
-    <button id="xr-ground">⛰地面</button>
-    <button id="xr-plan">📋A案</button>
     <button id="xr-undo">戻す</button>
-    <button id="xr-clear" class="warn">全削除</button>
+    <button id="xr-menu">☰ メニュー</button>
     <button id="xr-exit">終了</button>
+  </div>
+  <div id="xr-mode-chip"></div>
+  <div id="xr-palette" class="xr-panel">
+    <div class="pal-tabs" id="pal-tabs"></div>
+    <div class="pal-grid" id="pal-grid"></div>
+  </div>
+  <div id="xr-menu-panel" class="xr-panel">
+    <div class="menu-list">
+      <button data-m="measure">📐 距離を計測</button>
+      <button data-m="sun">☀ 季節・日当たり・成長</button>
+      <button data-m="ground">⛰ 地面の起伏</button>
+      <button data-m="plan" id="menu-plan">📋 案の切替・比較</button>
+      <button data-m="help">？ 操作ヘルプの表示</button>
+      <button data-m="clear" class="warn">🗑 全削除</button>
+    </div>
   </div>
   <div id="xr-target"></div>
   <div id="xr-sun-panel">
@@ -516,7 +558,7 @@ renderer.toneMappingExposure = 0.95;
 document.body.appendChild(renderer.domElement);
 
 /* 屋外の空と地面を模した環境マップ。写真スキャン素材(PBR)の質感と映り込みを自然にする */
-function makeOutdoorEnvironment(){
+function makeOutdoorEnvironment(r = renderer){
   const c = document.createElement('canvas');
   c.width = 256; c.height = 128;
   const g = c.getContext('2d');
@@ -531,7 +573,7 @@ function makeOutdoorEnvironment(){
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.mapping = THREE.EquirectangularReflectionMapping;
-  const pmrem = new THREE.PMREMGenerator(renderer);
+  const pmrem = new THREE.PMREMGenerator(r);
   const env = pmrem.fromEquirectangular(tex).texture;
   tex.dispose(); pmrem.dispose();
   return env;
@@ -1152,6 +1194,7 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, 
   refreshLibraryUI();
   refreshXRLabel();
   refreshPreview();
+  scheduleThumbs();
   return entry;
 }
 
@@ -1272,7 +1315,7 @@ function refreshLibraryUI(){
           ${KINDS.map(k => `<option value="${k.id}"${k.id === m.kind ? ' selected' : ''}>${k.label}</option>`).join('')}
         </select>`;
     li.innerHTML = `
-      <span class="mark"></span>
+      ${m.thumb ? `<img class="m-thumb" src="${m.thumb}" alt="">` : '<span class="mark"></span>'}
       <span class="m-info">
         <span class="m-name">${escapeHtml(m.name)}</span>
         <span class="m-dims">${fmtDims(m.size)}${w != null ? `　<b>${fmtWeight(w)}</b>` : ''}${showTris ? `　${m.tris >= 10000 ? (m.tris/10000).toFixed(1) + '万' : m.tris}△` +(heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : '') : ''}</span>
@@ -1435,7 +1478,7 @@ renderer.xr.addEventListener('sessionend', () => {
   measureMode = false;
   measurePts.length = 0;
   measureGroup.clear();
-  measureBtn.classList.remove('active-mode');
+  updateModeChip();
   btnPrev.clear();
   saveLayoutNow();
   refreshPreview();
@@ -2027,7 +2070,7 @@ function refreshPlansUI(){
       parent.appendChild(b);
     }
   }
-  document.getElementById('xr-plan').textContent = `📋${cur.name}`;
+  document.getElementById('menu-plan').textContent = `📋 案の切替・比較（いま: ${cur.name}）`;
   const ghost = ghostPlanId ? plans.list.find(p => p.id === ghostPlanId) : null;
   document.getElementById('xr-plan-info').textContent =
     `表示中: ${cur.name}（${cur.items.length}個）` + (ghost ? `\n半透明: ${ghost.name}（比較用・選択不可）` : '');
@@ -2342,7 +2385,7 @@ function pollButtons(){
 function onSelectStart(c){
   if(!renderer.xr.isPresenting) return;
   activeController = c;
-  if(northMode){ northMode = false; c.userData.placeOnRelease = false; setNorthFrom(c); return; }
+  if(northMode){ northMode = false; updateModeChip(); c.userData.placeOnRelease = false; setNorthFrom(c); return; }
   if(groundMode){ c.userData.placeOnRelease = false; recordGroundPoint(c); return; }
   if(measureMode){ addMeasurePoint(c); return; }
   const obj = objectUnderRay(c);
@@ -2472,6 +2515,7 @@ function refreshXRLabel(){
   const m = models[activeIndex];
   xrModelEl.textContent = m ? m.name : '—';
   xrDimsEl.textContent  = m ? fmtDims(m.size) : '—';
+  document.getElementById('xr-model-thumb').src = (m && m.thumb) || '';
 }
 /* 設置物の個数と、石(重量が出せるもの)の合計重量 */
 function placedTotals(){
@@ -2542,15 +2586,6 @@ xrTargetEl.addEventListener('click', () => {
   }
 });
 
-/* 計測モード切替とアンドゥボタン */
-const measureBtn = document.getElementById('xr-measure');
-measureBtn.addEventListener('click', () => {
-  measureMode = !measureMode;
-  measureBtn.classList.toggle('active-mode', measureMode);
-  measurePts.length = 0;
-  updateMeasureVisuals();
-  toast(measureMode ? '計測モード: 2点をトリガーで指定' : '計測モードを終了しました');
-});
 document.getElementById('xr-undo').addEventListener('click', undo);
 function toast(msg){
   toastEl.textContent = msg;
@@ -2558,30 +2593,189 @@ function toast(msg){
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
 }
-
-document.getElementById('xr-prev').addEventListener('click', () => {
-  if(!models.length) return;
-  activeIndex = (activeIndex - 1 + models.length) % models.length;
-  refreshXRLabel(); refreshLibraryUI();
-  toast(models[activeIndex].name);
-});
-document.getElementById('xr-next').addEventListener('click', () => {
-  if(!models.length) return;
-  activeIndex = (activeIndex + 1) % models.length;
-  refreshXRLabel(); refreshLibraryUI();
-  toast(models[activeIndex].name);
-});
-document.getElementById('xr-clear').addEventListener('click', () => {
-  if(placedGroup.children.length) pushUndo();
-  clearPlaced();
-  hovered = null; grabbed = null;
-  updateCount();
-  saveLayoutNow();
-  toast('すべて削除しました');
-});
 document.getElementById('xr-exit').addEventListener('click', () => {
   if(xrSession) xrSession.end();
 });
+
+/* ---------- MR中のパネル(素材パレット・メニュー・各設定) ---------- */
+const paletteEl = document.getElementById('xr-palette');
+const menuPanel = document.getElementById('xr-menu-panel');
+const menuBtn = document.getElementById('xr-menu');
+const modelBtn = document.getElementById('xr-model-btn');
+const modeChip = document.getElementById('xr-mode-chip');
+const helpEl = document.getElementById('xr-help');
+const xrPanels = () => [paletteEl, menuPanel, sunPanel, groundPanel, planPanel];
+
+function closeXRPanels(except){
+  for(const p of xrPanels()) if(p !== except) p.classList.remove('on');
+  menuBtn.classList.toggle('active-mode', [menuPanel, sunPanel, groundPanel, planPanel].some(p => p.classList.contains('on')));
+  modelBtn.classList.toggle('active-mode', paletteEl.classList.contains('on'));
+}
+function togglePanel(panel){
+  closeXRPanels(panel);
+  panel.classList.toggle('on');
+  closeXRPanels(panel);   // ボタンの強調表示を更新
+  if(panel === planPanel) refreshPlansUI();
+  if(panel === groundPanel) refreshGroundUI();
+  if(panel === paletteEl) refreshPalette();
+}
+
+/* いまのモード(計測・地面の記録・北合わせ)を上部に表示し、タップで抜けられるようにする */
+function updateModeChip(){
+  const label = northMode ? '🧭 北合わせ中 — 北に向けてトリガー'
+              : groundMode ? '⛰ 地面の記録中 — 先端を地面に当ててトリガー'
+              : measureMode ? '📐 計測中 — 2点をトリガーで指定' : '';
+  modeChip.textContent = label ? `${label}　✕` : '';
+  modeChip.classList.toggle('on', !!label);
+}
+function setMeasureMode(on){
+  measureMode = on;
+  if(on){ groundMode = false; northMode = false; }
+  measurePts.length = 0;
+  updateMeasureVisuals();
+  updateModeChip();
+  if(typeof refreshGroundUI === 'function') refreshGroundUI();
+}
+modeChip.addEventListener('click', () => {
+  northMode = false; groundMode = false;
+  setMeasureMode(false);
+  toast('モードを終了しました');
+});
+
+modelBtn.addEventListener('click', () => togglePanel(paletteEl));
+menuBtn.addEventListener('click', () => togglePanel(menuPanel));
+
+/* 全削除は2回タップで確定(誤操作防止) */
+let clearArmedUntil = 0;
+menuPanel.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-m]');
+  if(!b) return;
+  const act = b.dataset.m;
+  if(act === 'measure'){
+    setMeasureMode(!measureMode);
+    closeXRPanels();
+    toast(measureMode ? '計測モード: 2点をトリガーで指定' : '計測モードを終了しました');
+  }
+  if(act === 'sun') togglePanel(sunPanel);
+  if(act === 'ground') togglePanel(groundPanel);
+  if(act === 'plan') togglePanel(planPanel);
+  if(act === 'help'){
+    helpEl.classList.toggle('hidden');
+    b.textContent = helpEl.classList.contains('hidden') ? '？ 操作ヘルプの表示' : '？ 操作ヘルプを隠す';
+  }
+  if(act === 'clear'){
+    const now = performance.now();
+    if(now > clearArmedUntil){
+      clearArmedUntil = now + 3000;
+      b.classList.add('confirm');
+      b.textContent = '🗑 もう一度タップで全削除';
+      setTimeout(() => { b.classList.remove('confirm'); b.textContent = '🗑 全削除'; }, 3000);
+      return;
+    }
+    clearArmedUntil = 0;
+    b.classList.remove('confirm'); b.textContent = '🗑 全削除';
+    if(placedGroup.children.length) pushUndo();
+    clearPlaced();
+    hovered = null; grabbed = null;
+    updateCount();
+    saveLayoutNow();
+    closeXRPanels();
+    toast('すべて削除しました（「戻す」で元に戻せます）');
+  }
+});
+
+/* サムネイル(素材パレット・ライブラリ用)。メインの描画を邪魔しないよう
+   別の小さな WebGL でまとめて生成し、終わったらその描画領域ごと破棄する */
+let thumbTimer = null, thumbsReady = false, thumbBusy = false;
+/* 起動時の復元(素材・配置)が終わるまでは作らない。1枚ずつ間を空けて作り、操作を止めない */
+function scheduleThumbs(){
+  if(!thumbsReady || thumbBusy) return;
+  clearTimeout(thumbTimer);
+  thumbTimer = setTimeout(generateThumbs, 300);
+}
+function generateThumbs(){
+  if(!models.some(m => !m.thumb)) return;
+  let r;
+  try{ r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); }
+  catch(err){ console.warn('サムネイルを作れませんでした:', err); return; }
+  thumbBusy = true;
+  r.setSize(128, 128, false);
+  r.setClearColor(0x000000, 0);
+  r.toneMapping = THREE.ACESFilmicToneMapping;
+  const sc = new THREE.Scene();
+  sc.environment = makeOutdoorEnvironment(r);
+  sc.add(new THREE.HemisphereLight(0xffffff, 0x8a8a7a, 0.5));
+  const dl = new THREE.DirectionalLight(0xfff6e8, 2.0);
+  dl.position.set(2, 4, 3);
+  sc.add(dl);
+  const cam = new THREE.PerspectiveCamera(30, 1, 0.01, 200);
+  const view = new THREE.Vector3(0.9, 0.75, 1.2).normalize();
+  const step = () => {
+    const m = models.find(x => !x.thumb);
+    if(!m){
+      sc.environment.dispose();
+      r.dispose();
+      r.forceContextLoss();
+      thumbBusy = false;
+      refreshLibraryUI(); refreshXRLabel();
+      if(paletteEl.classList.contains('on')) refreshPalette();
+      return;
+    }
+    const obj = m.template.clone(true);
+    sc.add(obj);
+    const sphere = new THREE.Box3().setFromObject(obj).getBoundingSphere(new THREE.Sphere());
+    const dist = sphere.radius / Math.sin(THREE.MathUtils.degToRad(cam.fov / 2)) * 1.02;
+    cam.position.copy(sphere.center).addScaledVector(view, dist);
+    cam.near = dist / 100; cam.far = dist * 3;
+    cam.updateProjectionMatrix();
+    cam.lookAt(sphere.center);
+    r.render(sc, cam);
+    m.thumb = r.domElement.toDataURL('image/png');
+    sc.remove(obj);
+    if(models.filter(x => x.thumb).length % 4 === 0){ refreshLibraryUI(); refreshXRLabel(); }   // 途中経過も表示
+    setTimeout(step, 30);
+  };
+  step();
+}
+
+/* 素材パレット: サムネイル付きの一覧から選ぶ。種類のタブで絞り込み */
+const PAL_TABS = ['すべて', '石', '樹木', '構造物', '水・地面', '読み込み'];
+let palTab = 'すべて';
+function categoryOf(m){
+  if(m.plant) return '樹木';
+  if(m.density) return '石';
+  if(/池|小川|砂利|芝/.test(m.name)) return '水・地面';
+  return '構造物';
+}
+function refreshPalette(){
+  const tabs = document.getElementById('pal-tabs');
+  tabs.innerHTML = '';
+  for(const t of PAL_TABS){
+    const b = document.createElement('button');
+    b.textContent = t;
+    b.classList.toggle('on', t === palTab);
+    b.addEventListener('click', () => { palTab = t; refreshPalette(); });
+    tabs.appendChild(b);
+  }
+  const grid = document.getElementById('pal-grid');
+  grid.innerHTML = '';
+  models.forEach((m, i) => {
+    if(palTab === '読み込み' ? m.preset && !m.real : palTab !== 'すべて' && categoryOf(m) !== palTab) return;
+    const b = document.createElement('button');
+    b.classList.toggle('on', i === activeIndex);
+    const w = modelWeight(m);
+    b.innerHTML = `<img alt="" ${m.thumb ? `src="${m.thumb}"` : ''}><span class="pn">${escapeHtml(m.name)}</span>`
+                + `<span class="pd">高${fmtLen(m.size.y)}${w != null ? '・' + fmtWeight(w) : ''}</span>`;
+    b.addEventListener('click', () => {
+      activeIndex = i;
+      refreshXRLabel(); refreshLibraryUI();
+      closeXRPanels();
+      toast(`${m.name} — 床に向けてトリガーで設置`);
+    });
+    grid.appendChild(b);
+  });
+  if(!grid.children.length) grid.innerHTML = '<span class="pd">この分類の素材はありません</span>';
+}
 
 /* ================= 日当たり(太陽の位置と影) ================= */
 const LS_SUN = 'sekitei.sun.v1';
@@ -2798,11 +2992,6 @@ document.getElementById('sun-geo-btn').addEventListener('click', () => {
 
 /* MR側の操作 */
 const sunPanel = document.getElementById('xr-sun-panel');
-const sunBtn = document.getElementById('xr-sun');
-sunBtn.addEventListener('click', () => {
-  sunPanel.classList.toggle('on');
-  sunBtn.classList.toggle('active-mode', sunPanel.classList.contains('on'));
-});
 sunPanel.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-sun]');
   if(!b) return;
@@ -2818,8 +3007,10 @@ sunPanel.addEventListener('click', (e) => {
   }
   if(act === 'play') toggleSunPlay();
   if(act === 'north'){
+    setMeasureMode(false); groundMode = false;
     northMode = true;
-    sunPanel.classList.remove('on'); sunBtn.classList.remove('active-mode');
+    closeXRPanels();
+    updateModeChip();
     toast('北の方角にコントローラーを向けてトリガー');
   }
 });
@@ -2827,7 +3018,6 @@ sunPanel.addEventListener('click', (e) => {
 /* ---------- 地面の記録(MR操作) ---------- */
 let groundMode = false;
 const groundPanel = document.getElementById('xr-ground-panel');
-const groundBtn = document.getElementById('xr-ground');
 
 /* コントローラーの先端を地面に当ててトリガー → その点の高さを記録。
    近く(30cm以内)に既存の点があれば置き換える(測り直し) */
@@ -2854,25 +3044,6 @@ function refreshGroundUI(){
 }
 
 const planPanel = document.getElementById('xr-plan-panel');
-const planBtn = document.getElementById('xr-plan');
-function closeXRPanels(except){
-  if(except !== sunPanel){ sunPanel.classList.remove('on'); sunBtn.classList.remove('active-mode'); }
-  if(except !== planPanel){ planPanel.classList.remove('on'); planBtn.classList.remove('active-mode'); }
-  if(except !== groundPanel){ groundPanel.classList.remove('on'); groundBtn.classList.toggle('active-mode', groundMode); }
-}
-groundBtn.addEventListener('click', () => {
-  closeXRPanels(groundPanel);
-  groundPanel.classList.toggle('on');
-  groundBtn.classList.toggle('active-mode', groundPanel.classList.contains('on') || groundMode);
-  refreshGroundUI();
-});
-sunBtn.addEventListener('click', () => closeXRPanels(sunPanel));
-planBtn.addEventListener('click', () => {
-  closeXRPanels(planPanel);
-  planPanel.classList.toggle('on');
-  planBtn.classList.toggle('active-mode', planPanel.classList.contains('on'));
-  refreshPlansUI();
-});
 planPanel.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-p]');
   if(!b) return;
@@ -2884,14 +3055,16 @@ groundPanel.addEventListener('click', (e) => {
   if(!b) return;
   const act = b.dataset.g;
   if(act === 'record'){
-    groundMode = !groundMode;
-    if(groundMode){ measureMode = false; measureBtn.classList.remove('active-mode'); setTerrainShown(true); }
-    toast(groundMode ? '記録モード: 先端を地面に当ててトリガー' : '記録モードを終了しました');
+    const on = !groundMode;
+    setMeasureMode(false); northMode = false;
+    groundMode = on;
+    if(on){ setTerrainShown(true); closeXRPanels(); }
+    updateModeChip();
+    toast(on ? '記録モード: 先端を地面に当ててトリガー' : '記録モードを終了しました');
   }
   if(act === 'show') setTerrainShown(!terrainShown);
   if(act === 'undo' && groundPts.length){ setGroundPts(groundPts.slice(0, -1)); toast('最後の点を消しました'); }
   if(act === 'clear' && groundPts.length){ setGroundPts([]); toast('地面の記録を消しました（平らな床に戻ります）'); }
-  groundBtn.classList.toggle('active-mode', groundPanel.classList.contains('on') || groundMode);
   refreshGroundUI();
 });
 document.getElementById('ground-clear-btn').addEventListener('click', () => {
@@ -2920,7 +3093,8 @@ updateLayoutStatus();
 applySun();
 rebuildTerrain();
 /* リアル素材 → 保存済みGLB → 配置レイアウト の順で復元(配置がこれらのモデルを参照するため) */
-loadManifestPresets().then(restoreSavedGLBs).then(loadSavedLayout);
+loadManifestPresets().then(restoreSavedGLBs).then(loadSavedLayout)
+  .then(() => { thumbsReady = true; scheduleThumbs(); });
 
 /* 動作確認用(URLに ?debug を付けたときだけ公開) */
 if(new URLSearchParams(location.search).has('debug')){
@@ -2928,7 +3102,7 @@ if(new URLSearchParams(location.search).has('debug')){
                        adjustSink, serializeLayout, placedTotals, modelWeight,
                        sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun,
                        setGrowYears, growthFactor, setGroundPts, terrainHeight, setTerrainShown, updateClipPlanes, floorPointFor,
-                       switchPlan, newPlan, getPlans: () => plans, ghostGroup, renderPlanImage };
+                       switchPlan, newPlan, getPlans: () => plans, ghostGroup, renderPlanImage, refreshPalette, updateModeChip };
 }
 
 /* ================= メインループ ================= */
