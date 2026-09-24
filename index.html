@@ -68,6 +68,8 @@
   }
   #support.ok{ background:#E3E9DB; color:var(--moss-deep); }
   #support.ng{ background:#EBDCD4; color:#7A4634; }
+  #offline-status{ font-size:11.5px; color:var(--ink-soft); margin:-14px 0 22px; min-height:1em; }
+  #offline-status.ok{ color:var(--moss-deep); }
 
   h2{
     font-family:"Shippori Mincho", serif;
@@ -106,6 +108,15 @@
   }
   .m-dims{ font-size:11px; color:var(--ink-soft); margin-top:2px; }
   .m-dims .heavy{ color:#8A4A2E; font-weight:700; }
+  .m-credit{ display:block; font-size:10.5px; color:var(--stone); margin-top:2px;
+             white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .m-dims b{ color:var(--ink); font-weight:700; }
+  .m-density{
+    display:block; margin-top:5px; max-width:100%;
+    font-family:inherit; font-size:11px; color:var(--ink-soft);
+    background:rgba(255,255,255,.5); border:1px solid var(--line); border-radius:4px;
+    padding:3px 4px;
+  }
   .m-del{
     flex:none; border:none; background:none; cursor:pointer;
     color:var(--stone); font-size:15px; padding:4px 6px;
@@ -123,7 +134,7 @@
   button.ghost:hover{ background:rgba(95,112,82,.1); }
 
   #start-btn{
-    width:100%; margin-top:30px;
+    width:100%; margin-top:18px;
     padding:17px; font-size:16px; font-weight:700; letter-spacing:.22em;
     font-family:"Shippori Mincho", serif;
     color:var(--washi); background:var(--ink);
@@ -139,7 +150,22 @@
     color:var(--ink-soft); line-height:1.5;
   }
   table.controls td:first-child{ width:42%; font-weight:700; color:var(--ink); }
+  .opt-row{
+    display:flex; gap:10px; align-items:flex-start; margin-top:26px;
+    font-size:13px; font-weight:700; cursor:pointer; line-height:1.5;
+  }
+  .opt-row input{ margin-top:3px; accent-color:var(--moss-deep); width:16px; height:16px; flex:none; }
+  .opt-row small{ display:block; font-size:11px; font-weight:400; color:var(--ink-soft); }
   .note{ margin-top:18px; font-size:11.5px; line-height:1.8; color:var(--ink-soft); }
+  .plan-tabs{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:4px; }
+  .plan-tabs button{
+    font-family:inherit; font-size:13px; font-weight:700; cursor:pointer;
+    padding:7px 14px; border-radius:20px; border:1px solid var(--line);
+    background:rgba(255,255,255,.35); color:var(--ink-soft);
+  }
+  .plan-tabs button.active{ background:var(--ink); color:var(--washi); border-color:var(--ink); }
+  .plan-actions button{ font-size:11.5px; padding:8px 4px; }
+  .layout-status{ font-size:12px; line-height:1.7; color:var(--ink-soft); margin-bottom:8px; }
 
   /* ---------- MR中オーバーレイ ---------- */
   #xr-overlay{
@@ -164,20 +190,120 @@
   }
   #xr-top button:active{ background:var(--moss); }
   #xr-top button.warn{ background:rgba(158,74,46,.55); }
+  #xr-top button, #xr-count, #xr-dims, #xr-model{ white-space:nowrap; }
+  #xr-model-btn{ display:flex; align-items:center; gap:8px; padding:4px 12px 4px 4px !important; }
+  #xr-model-thumb{ width:36px; height:36px; border-radius:50%; background:rgba(234,231,220,.12); object-fit:cover; }
+  #xr-model-thumb:not([src]), #xr-model-thumb[src=""]{ visibility:hidden; }
+  .mb-text{ display:flex; flex-direction:column; align-items:flex-start; }
   #xr-model{
-    font-size:13px; font-weight:700; max-width:200px; text-align:center;
+    font-size:13px; font-weight:700; max-width:180px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
-  #xr-dims{ font-size:11px; opacity:.75; text-align:center; }
+  #xr-dims{ font-size:11px; opacity:.75; font-weight:400; }
+  .mb-caret{ opacity:.7; }
+  #xr-mode-chip{
+    pointer-events:auto; display:none;
+    position:absolute; top:96px; left:16px;
+    background:rgba(192,80,60,.92); color:#fff;
+    font-size:13px; font-weight:700; padding:9px 16px; border-radius:30px; cursor:pointer;
+  }
+  #xr-mode-chip.on{ display:block; }
+  #xr-help.hidden{ display:none; }
+  #xr-palette{ left:50%; right:auto; transform:translateX(-50%); width:min(780px, 94vw); max-height:72vh; overflow-y:auto; }
+  .pal-tabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .pal-tabs button.on{ background:var(--moss); }
+  .pal-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(118px, 1fr)); gap:8px; }
+  .pal-grid button{
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    padding:8px 6px !important; border-radius:12px !important; text-align:center;
+  }
+  .pal-grid button.on{ outline:2px solid var(--washi); background:var(--moss) !important; }
+  .pal-grid img{ width:84px; height:84px; object-fit:contain; }
+  .pal-grid .pn{ font-size:12px; line-height:1.3; }
+  .pal-grid .pd{ font-size:10.5px; font-weight:400; opacity:.75; }
+  .menu-list{ display:flex; flex-direction:column; gap:8px; }
+  .menu-list button{ text-align:left; padding:12px 14px !important; font-size:14px !important; }
+  .menu-list button.warn{ background:rgba(158,74,46,.55); }
+  .menu-list button.confirm{ background:#9E4A2E; }
+  .m-thumb{ width:42px; height:42px; flex:none; object-fit:contain; border-radius:6px; background:rgba(255,255,255,.4); }
   #xr-count{ font-size:11px; opacity:.75; padding:0 4px; }
+  #xr-top button.unlocked{ background:rgba(158,74,46,.55); }
+  #xr-top button.active-mode{ background:var(--moss); }
+  #xr-target{
+    pointer-events:auto;
+    position:absolute; top:96px; left:50%; transform:translateX(-50%);
+    background:rgba(35,39,31,.72); color:var(--washi);
+    font-size:12px; letter-spacing:.03em;
+    padding:7px 14px; border-radius:30px;
+    display:none; white-space:nowrap;
+  }
+  #xr-target.on{ display:block; }
   #xr-help{
     position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
     background:rgba(35,39,31,.72); color:var(--washi);
     font-size:11.5px; letter-spacing:.04em;
     padding:8px 16px; border-radius:30px; white-space:nowrap;
   }
-  #xr-toast{
+  #xr-sun-panel{
+    pointer-events:auto; display:none;
+    position:absolute; top:96px; right:16px; width:280px;
+    background:rgba(35,39,31,.86); color:var(--washi);
+    border-radius:14px; padding:12px 14px; font-size:13px;
+  }
+  #xr-sun-panel.on, .xr-panel.on{ display:block; }
+  .xr-panel{
+    pointer-events:auto; display:none;
+    position:absolute; top:96px; right:16px; width:300px;
+    background:rgba(35,39,31,.86); color:var(--washi);
+    border-radius:14px; padding:12px 14px; font-size:13px;
+  }
+  .xr-panel .sp-row{ display:flex; gap:8px; margin:6px 0; }
+  .xr-panel .sp-row button{ flex:1; }
+  #xr-plan-list{ flex-wrap:wrap; }
+  #xr-plan-list button{ flex:0 0 auto; min-width:60px; }
+  .xr-panel .sp-info{ white-space:pre-line; font-size:12px; line-height:1.6; margin-bottom:6px; }
+  .xr-panel button{
+    font-family:inherit; font-size:13px; font-weight:700; cursor:pointer;
+    border:none; border-radius:20px; padding:8px 10px;
+    background:rgba(234,231,220,.16); color:var(--washi);
+  }
+  .xr-panel button.on{ background:var(--moss); }
+  #xr-sun-panel .sp-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; }
+  #xr-sun-panel .sp-row span{ flex:1; text-align:center; font-weight:700; font-size:15px; }
+  #xr-sun-panel button{
+    font-family:inherit; font-size:13px; font-weight:700; cursor:pointer;
+    border:none; border-radius:20px; padding:8px 12px;
+    background:rgba(234,231,220,.16); color:var(--washi);
+  }
+  #xr-sun-panel button:active{ background:var(--moss); }
+  #xr-sun-panel .sp-info{ white-space:pre-line; font-size:11.5px; opacity:.85; line-height:1.6; margin:4px 0 8px; text-align:center; }
+  .sun-row{ display:flex; align-items:center; gap:10px; }
+  .sun-row select{
+    font-family:inherit; font-size:13px; padding:6px 6px; border:1px solid var(--line);
+    border-radius:5px; background:rgba(255,255,255,.5); color:var(--ink);
+  }
+  .sun-row input[type=range]{ flex:1; accent-color:var(--moss-deep); }
+  .sun-lbl{ font-size:12px; font-weight:700; }
+  .sun-hint{ font-size:11px; color:var(--ink-soft); }
+  .sun-val{ font-size:13px; font-weight:700; min-width:42px; text-align:right; }
+  #xr-obj-bar{
+    pointer-events:auto; display:none;
     position:absolute; bottom:60px; left:50%; transform:translateX(-50%);
+    align-items:center; gap:6px;
+    background:rgba(35,39,31,.86); color:var(--washi);
+    padding:8px 10px; border-radius:40px; white-space:nowrap;
+  }
+  #xr-obj-bar.on{ display:flex; }
+  #xr-obj-name{ font-size:12px; font-weight:700; padding:0 8px; max-width:160px; overflow:hidden; text-overflow:ellipsis; }
+  #xr-obj-bar button{
+    font-family:inherit; font-size:14px; font-weight:700; cursor:pointer;
+    border:none; border-radius:30px; padding:10px 14px;
+    background:rgba(234,231,220,.16); color:var(--washi);
+  }
+  #xr-obj-bar button:active{ background:var(--moss); }
+  #xr-obj-bar button.warn{ background:rgba(158,74,46,.55); }
+  #xr-toast{
+    position:absolute; bottom:124px; left:50%; transform:translateX(-50%);
     background:rgba(95,112,82,.9); color:var(--washi);
     font-size:13px; font-weight:700;
     padding:9px 18px; border-radius:30px;
@@ -209,8 +335,11 @@
     </p>
 
     <div id="support">デバイスを確認しています…</div>
+    <div id="offline-status"></div>
 
     <h2>ライブラリ</h2>
+    <div class="group-label" id="real-label" hidden>リアル素材</div>
+    <ul class="model-group" id="real-list" hidden></ul>
     <div class="group-label">プリセット</div>
     <ul class="model-group" id="preset-list"></ul>
     <div class="group-label">読み込んだGLB</div>
@@ -220,42 +349,154 @@
       <input type="file" id="file-input" accept=".glb,.gltf" multiple hidden>
     </div>
 
+    <h2>レイアウト</h2>
+    <div class="plan-tabs" id="plan-tabs"></div>
+    <div class="btn-row plan-actions">
+      <button class="ghost" id="plan-dup-btn">この案を複製</button>
+      <button class="ghost" id="plan-new-btn">空の案を追加</button>
+      <button class="ghost" id="plan-rename-btn">名前変更</button>
+      <button class="ghost" id="plan-del-btn">削除</button>
+    </div>
+    <p class="layout-status" id="layout-status">配置はまだありません（設置すると自動保存されます）</p>
+    <div class="btn-row">
+      <button class="ghost" id="layout-export-btn">書き出し（JSON）</button>
+      <button class="ghost" id="layout-import-btn">読み込み</button>
+      <input type="file" id="layout-input" accept=".json,application/json" hidden>
+    </div>
+    <div class="btn-row">
+      <button class="ghost" id="plan-image-btn">配置図を保存（PNG）</button>
+      <button class="ghost" id="view-image-btn">3D画像を保存（PNG）</button>
+    </div>
+
+    <label class="opt-row"><input type="checkbox" id="opt-occlusion" checked>
+      <span>実物による遮蔽<small>現実の木や人の後ろに置いた物が隠れます（Depth API・試験機能）</small></span></label>
+
     <button id="start-btn" disabled>MRで開始</button>
+
+    <h2>季節・日当たり</h2>
+    <div class="sun-row">
+      <select id="sun-month" aria-label="月"></select>
+      <input type="range" id="sun-hour" min="4" max="20" step="0.5" aria-label="時刻">
+      <span id="sun-hour-label" class="sun-val">—</span>
+    </div>
+    <p class="layout-status" id="sun-info">—</p>
+    <p class="layout-status" id="season-note">—</p>
+    <div class="sun-row">
+      <span class="sun-lbl">樹木</span>
+      <select id="grow-years" aria-label="年数"></select>
+      <span class="sun-hint">剪定しない場合の成長の目安</span>
+    </div>
+    <div class="btn-row">
+      <button class="ghost" id="sun-now-btn">現在の日時</button>
+      <button class="ghost" id="sun-geo-btn">現在地を使う</button>
+    </div>
+    <p class="note" style="margin-top:8px">
+      場所: <span id="sun-place">—</span><br>
+      ※ MR中に「☀季節」→「北を合わせる」で北の方角を一度設定すると、実際の方角どおりに影が落ちます。<br>
+      ※ 影を落とすのは配置した物だけです（建物・既存の木の影は含みません）。
+    </p>
+
+    <h2>地面の起伏</h2>
+    <p class="layout-status" id="ground-status">—</p>
+    <div class="btn-row"><button class="ghost" id="ground-clear-btn">地面の記録を消す</button></div>
+    <p class="note" style="margin-top:8px">
+      ※ 屋外の傾斜地・段差では、MR中に「⛰地面」→「記録モード」にして、コントローラーの先端を地面に軽く当ててトリガーを引きます。
+      数か所（斜面の上と下・段差の上下など）記録すると、その起伏に沿って配置されます。
+    </p>
 
     <h2>操作方法</h2>
     <table class="controls">
       <tr><td>トリガー（床に向けて）</td><td>選択中のモデルを設置</td></tr>
       <tr><td>トリガー（物に向けて長押し）</td><td>つかんで移動</td></tr>
       <tr><td>スティック 左右</td><td>指している物を回転</td></tr>
-      <tr><td>スティック 上下</td><td>指している物を拡大・縮小</td></tr>
+      <tr><td>スティック 上下</td><td>⬍根入れモード（初期）: 下で沈める・上で持ち上げる。地表と「1/3根入れ」で一旦止まる<br>⤢拡縮モード: 大きさを変える（MR中の上部ボタンで切替）</td></tr>
       <tr><td>グリップ（物に向けて）</td><td>その物を削除</td></tr>
-      <tr><td>A / B ボタン（右手）</td><td>設置するモデルを次へ / 前へ切り替え</td></tr>
-      <tr><td>X ボタン 長押し（左手）</td><td>設置した物を全削除</td></tr>
-      <tr><td>Y ボタン（左手）</td><td>MRを終了</td></tr>
+      <tr><td>A / B ボタン（右手）</td><td>設置する素材を次へ / 前へ切り替え</td></tr>
+      <tr><td>右スティック押し込み</td><td>スティック上下の役割を 根入れ ⇔ 大きさ で切り替え</td></tr>
+      <tr><td>X ボタン（左手）</td><td>タップ＝指している物（選択中の物）を複製／長押し＝全削除</td></tr>
+      <tr><td>Y ボタン（左手）</td><td>タップ＝直前の操作を元に戻す／長押し＝MRを終了</td></tr>
+      <tr><td>上部の素材ボタン（MR中）</td><td>サムネイル一覧から置く素材を選ぶ（石・樹木などで絞り込み）</td></tr>
+      <tr><td>選択中の物のバー（MR中・画面下）</td><td>最後に置いた／つかんだ物を ↺↻15°回転・▼▲5cm根入れ・複製・削除</td></tr>
+      <tr><td>ハンドトラッキング</td><td>親指と人差し指でつまむ＝トリガー（設置・つかむ・ボタン操作）。回転や根入れは画面下のバーで</td></tr>
+      <tr><td>☰ メニュー（MR中）</td><td>距離の計測・季節と日当たり・地面の起伏・案の切替・全削除（2回タップ）</td></tr>
     </table>
 
     <p class="note">
       ※ Quest本体のブラウザで開いてください（HTTPS必須・GitHub Pages推奨）。<br>
+      ※ Questのブラウザは画面上のボタン表示（dom-overlay）に対応していないため、MR中は目の前の案内板（HUD）とコントローラーのボタンで操作します。季節・日当たり・成長年数・案の切り替えは、MR開始前にこの画面で設定してください。「地面の起伏の記録」「北合わせ」は現在、画面上のボタンが使える端末でのみ操作できます。<br>
       ※ Questにダウンロードした .glb は「GLBファイルを追加」から読み込めます。<br>
-      ※ スキャンは Scaniverse / Polycam 等でGLB書き出し。1個あたり10万ポリゴン以下推奨。
+      ※ スキャンは Scaniverse / Polycam 等でGLB書き出し。1個あたり10万ポリゴン以下推奨。<br>
+      ※ 全員に共通の「リアル素材」は、リポジトリの presets/ フォルダにGLBを置いて登録します（手順は presets/README.md）。<br>
+      ※ MR中の見た目（現実の庭と重なった状態）は、Quest本体のスクリーンショット機能（Metaボタンを押しながらトリガー）で撮影できます。<br>
+      ※ 重量は形状から求めた体積×比重の<b>目安</b>です（根入れで埋めた部分も含む）。スキャン精度や石質で2割程度ずれることがあるため、重機・吊り具は余裕を見て選んでください。<br>
+      ※ 配置と読み込んだGLBはこの端末に自動保存され、次回開いたとき復元されます。<br>
+      ※ Questでは空間アンカーで前回と同じ実際の位置に配置を復元します。
     </p>
   </div>
 </div>
 
 <div id="xr-overlay">
   <div id="xr-top">
-    <button id="xr-prev">◀</button>
-    <div>
-      <div id="xr-model">—</div>
-      <div id="xr-dims">—</div>
-    </div>
-    <button id="xr-next">▶</button>
+    <button id="xr-model-btn" title="素材を選ぶ">
+      <img id="xr-model-thumb" alt="">
+      <span class="mb-text"><span id="xr-model">—</span><span id="xr-dims">—</span></span>
+      <span class="mb-caret">▾</span>
+    </button>
     <span id="xr-count">0個</span>
-    <button id="xr-clear" class="warn">全削除</button>
+    <button id="xr-lock">⬍根入れ</button>
+    <button id="xr-undo">戻す</button>
+    <button id="xr-menu">☰ メニュー</button>
     <button id="xr-exit">終了</button>
   </div>
+  <div id="xr-mode-chip"></div>
+  <div id="xr-palette" class="xr-panel">
+    <div class="pal-tabs" id="pal-tabs"></div>
+    <div class="pal-grid" id="pal-grid"></div>
+  </div>
+  <div id="xr-menu-panel" class="xr-panel">
+    <div class="menu-list">
+      <button data-m="measure">📐 距離を計測</button>
+      <button data-m="sun">☀ 季節・日当たり・成長</button>
+      <button data-m="ground">⛰ 地面の起伏</button>
+      <button data-m="plan" id="menu-plan">📋 案の切替・比較</button>
+      <button data-m="help">？ 操作ヘルプの表示</button>
+      <button data-m="clear" class="warn">🗑 全削除</button>
+    </div>
+  </div>
+  <div id="xr-target"></div>
+  <div id="xr-sun-panel">
+    <div class="sp-row"><button data-sun="month-">◀</button><span id="xr-sun-month">—</span><button data-sun="month+">▶</button></div>
+    <div class="sp-row"><button data-sun="hour-">◀</button><span id="xr-sun-hour">—</span><button data-sun="hour+">▶</button></div>
+    <div class="sp-row"><button data-sun="years-">◀</button><span id="xr-grow">—</span><button data-sun="years+">▶</button></div>
+    <div class="sp-info" id="xr-sun-info">—</div>
+    <div class="sp-row">
+      <button data-sun="play">▶ 1日の影</button>
+      <button data-sun="now">現在</button>
+      <button data-sun="north">北を合わせる</button>
+    </div>
+  </div>
+  <div id="xr-ground-panel" class="xr-panel">
+    <div class="sp-info" id="xr-ground-info">—</div>
+    <div class="sp-row"><button data-g="record">● 記録モード</button><button data-g="show">地面を表示</button></div>
+    <div class="sp-row"><button data-g="undo">最後の点を消す</button><button data-g="clear">すべて消す</button></div>
+  </div>
+  <div id="xr-plan-panel" class="xr-panel">
+    <div class="sp-info" id="xr-plan-info">—</div>
+    <div class="sp-row" id="xr-plan-list"></div>
+    <div class="sp-row"><button data-p="ghost">前の案を重ねる</button><button data-p="dup">複製して新しい案</button></div>
+  </div>
+  <div id="xr-obj-bar">
+    <span id="xr-obj-name">—</span>
+    <button data-o="rotl">↺ 15°</button>
+    <button data-o="rotr">↻ 15°</button>
+    <button data-o="down" id="xr-obj-down">▼ 5cm</button>
+    <button data-o="up" id="xr-obj-up">▲ 5cm</button>
+    <button data-o="dup">複製</button>
+    <button data-o="del" class="warn">削除</button>
+    <button data-o="desel" title="選択を解除">✕</button>
+  </div>
   <div id="xr-toast"></div>
-  <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝大きさ　・　グリップ＝削除</div>
+  <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝根入れ（⤢で大きさ）　・　グリップ＝削除　・　右A/B＝素材切替　左X＝複製　左Y＝戻す</div>
 </div>
 
 <!-- 起動ウォッチドッグ: ライブラリ読込失敗を画面に表示する -->
@@ -306,6 +547,35 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+
+/* オフライン対応: 一度開けば、電波のない庭でも起動できるように Service Worker でキャッシュする */
+const offlineEl = document.getElementById('offline-status');
+async function checkOfflineReady(){
+  const need = [new URL('index.html', location.href).href, import.meta.resolve('three')];
+  for(const url of need) if(!(await caches.match(url, { ignoreSearch: true }))) return false;
+  return true;
+}
+if('serviceWorker' in navigator && window.isSecureContext){
+  navigator.serviceWorker.register('sw.js').then(async () => {
+    await navigator.serviceWorker.ready;
+    for(let i=0; i<10; i++){   // 初回はインストール(保存)が終わるまで少し待つ
+      if(await checkOfflineReady()){
+        offlineEl.textContent = '✔ この端末に保存済み — 電波がなくても起動できます';
+        offlineEl.className = 'ok';
+        return;
+      }
+      offlineEl.textContent = 'オフライン用に保存しています…';
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    offlineEl.textContent = 'オフライン用の保存が完了していません（通信できる場所で開き直してください）';
+  }).catch(err => {
+    console.warn('Service Worker を登録できませんでした:', err);
+    offlineEl.textContent = '';
+  });
+}
 
 /* ================= 基本セットアップ ================= */
 
@@ -318,12 +588,60 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
 renderer.setClearColor(0xEAE7DC, 1);
+renderer.shadowMap.enabled = true;
+renderer.localClippingEnabled = true;   // 根入れした部分を地面で切る
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a7a, 1.4));
-const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+/* 屋外の空と地面を模した環境マップ。写真スキャン素材(PBR)の質感と映り込みを自然にする */
+function makeOutdoorEnvironment(r = renderer){
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 128);
+  grad.addColorStop(0.00, '#5E7C9C');   // 天頂
+  grad.addColorStop(0.45, '#9EA8AC');   // 地平線付近
+  grad.addColorStop(0.52, '#5E5B4E');   // 地面(土・砂利)
+  grad.addColorStop(1.00, '#3A382F');
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 128);
+  g.fillStyle = 'rgba(255,250,235,0.9)';   // 太陽(ライトの方向とおおむね合わせる)
+  g.beginPath(); g.arc(190, 26, 7, 0, Math.PI*2); g.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  const pmrem = new THREE.PMREMGenerator(r);
+  const env = pmrem.fromEquirectangular(tex).texture;
+  tex.dispose(); pmrem.dispose();
+  return env;
+}
+scene.environment = makeOutdoorEnvironment();
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a7a, 0.35));
+const sun = new THREE.DirectionalLight(0xfff6e8, 1.9);
 sun.position.set(2, 4, 1.5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -8; sun.shadow.camera.right = 8;
+sun.shadow.camera.top = 8;   sun.shadow.camera.bottom = -8;
+sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 15;
+sun.shadow.bias = -0.0002;
+sun.shadow.normalBias = 0.02;
 scene.add(sun);
+scene.add(sun.target);
+
+/* MR中に実際の床へ影だけを落とす面(パススルーでは影以外は透明) */
+/* 実物遮蔽(深度)と同じ高さだとちらつくため、わずかに浮かせて手前にずらす */
+const SHADOW_LIFT = 0.01;
+const shadowGround = new THREE.Mesh(
+  new THREE.PlaneGeometry(30, 30),
+  new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
+);
+shadowGround.rotation.x = -Math.PI/2;
+shadowGround.receiveShadow = true;
+shadowGround.visible = false;
+scene.add(shadowGround);
 
 /* プレビュー用の枯山水グラウンド(MR中は非表示) */
 const previewGround = makeKaresansuiGround();
@@ -357,40 +675,153 @@ function makeKaresansuiGround(){
   );
   mesh.rotation.x = -Math.PI/2;
   mesh.position.y = -0.002;
+  mesh.receiveShadow = true;
   return mesh;
 }
 
 /* ================= プリセット生成 ================= */
 
 const MAT = {
-  stone:  new THREE.MeshStandardMaterial({ color:0x8f8f86, roughness:.95, flatShading:true }),
-  stoneD: new THREE.MeshStandardMaterial({ color:0x6e6f68, roughness:.95, flatShading:true }),
+  stone:  new THREE.MeshStandardMaterial({ color:0x8f8f86, roughness:.95 }),
+  stoneD: new THREE.MeshStandardMaterial({ color:0x6e6f68, roughness:.95 }),
   trunk:  new THREE.MeshStandardMaterial({ color:0x6b4f36, roughness:.9,  flatShading:true }),
   wood:   new THREE.MeshStandardMaterial({ color:0x7a5a3a, roughness:.9,  flatShading:true }),
   leaf:   new THREE.MeshStandardMaterial({ color:0x49683a, roughness:.85, flatShading:true }),
   leafD:  new THREE.MeshStandardMaterial({ color:0x3a5530, roughness:.85, flatShading:true }),
   water:  new THREE.MeshStandardMaterial({ color:0x4e7c8a, roughness:.15, metalness:0,
                                            transparent:true, opacity:.78, side:THREE.DoubleSide }),
+  bamboo: new THREE.MeshStandardMaterial({ color:0xB5A369, roughness:.7,  flatShading:true }),
+  bambooD:new THREE.MeshStandardMaterial({ color:0x8F7D4C, roughness:.75, flatShading:true }),
+  maple:  new THREE.MeshStandardMaterial({ color:0xB0502F, roughness:.85, flatShading:true }),
+  mapleD: new THREE.MeshStandardMaterial({ color:0x8C3A24, roughness:.85, flatShading:true }),
+  deck:   new THREE.MeshStandardMaterial({ color:0x8C6F4F, roughness:.85, flatShading:true }),
 };
+/* 季節で色が変わる葉の材質(role)。shade は同じ木の中の濃淡 */
+Object.assign(MAT.leaf.userData,   { role: 'ever',  shade: 1 });
+Object.assign(MAT.leafD.userData,  { role: 'ever',  shade: 0.8 });
+Object.assign(MAT.maple.userData,  { role: 'decid', shade: 1 });
+Object.assign(MAT.mapleD.userData, { role: 'decid', shade: 0.78 });
 
-/* 疑似乱数つき岩 */
+/* 砂利・芝生用の斑点テクスチャ */
+function makeSpeckleTexture(base, colors, n, rmin, rmax){
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = base; g.fillRect(0, 0, 512, 512);
+  for(let i=0; i<n; i++){
+    g.fillStyle = colors[i % colors.length];
+    const r = rmin + Math.random() * (rmax - rmin);
+    g.beginPath();
+    g.ellipse(Math.random()*512, Math.random()*512, r, r*(0.6 + Math.random()*0.4), Math.random()*Math.PI, 0, Math.PI*2);
+    g.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/* シード付き乱数と3Dバリューノイズ(岩の形状・色むら用) */
+function mulberry32(a){
+  return () => {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function hash3(x, y, z, s){
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(z, 2147483647) + Math.imul(s, 144665);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function valueNoise3(x, y, z, s){
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = xf*xf*(3-2*xf), v = yf*yf*(3-2*yf), w = zf*zf*(3-2*zf);
+  const L = (a, b, t) => a + (b - a) * t;
+  const c = (dx, dy, dz) => hash3(xi+dx, yi+dy, zi+dz, s);
+  return L(
+    L(L(c(0,0,0), c(1,0,0), u), L(c(0,1,0), c(1,1,0), u), v),
+    L(L(c(0,0,1), c(1,0,1), u), L(c(0,1,1), c(1,1,1), u), v), w) * 2 - 1;
+}
+function fbm3(x, y, z, s, oct=4){
+  let a = 0.5, f = 1, sum = 0;
+  for(let i=0; i<oct; i++){ sum += a * valueNoise3(x*f, y*f, z*f, s + i*17); a *= 0.5; f *= 2.03; }
+  return sum;
+}
+
+const MAT_ROCK = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:.93, metalness:0 });
+
+/* 自然石: 割れ面(平面カット)+多重ノイズの起伏+凹部の陰り・上面の苔を頂点色で表現
+   detail: 1=小石 / 2=中 / 3=主役石 */
 function makeRock({ r=0.35, flat=0.72, seed=1, detail=3, mat=MAT.stone } = {}){
-  const geo = new THREE.IcosahedronGeometry(r, detail);
+  const subdiv = { 1: 3, 2: 9, 3: 22 }[detail] || 9;
+  let geo = new THREE.IcosahedronGeometry(1, subdiv);
+  geo.deleteAttribute('normal'); geo.deleteAttribute('uv');
+  geo = mergeVertices(geo);   // 継ぎ目を結合して滑らかな陰影にする
+
+  const rand = mulberry32(seed * 9301 + 49297);
+  // 割れ面: ランダムな方向の平面で数か所削ぐ
+  const cuts = [];
+  const nCuts = detail === 1 ? 2 : 4 + Math.floor(rand() * 3);
+  for(let k=0; k<nCuts; k++){
+    const n = new THREE.Vector3(rand()*2-1, (rand()*2-1) * 0.8, rand()*2-1).normalize();
+    cuts.push({ n, d: 0.62 + rand() * 0.28 });
+  }
+
   const pos = geo.attributes.position;
+  const disp = new Float32Array(pos.count);
   const v = new THREE.Vector3();
   for(let i=0; i<pos.count; i++){
     v.fromBufferAttribute(pos, i);
-    const n =
-      0.16*Math.sin(v.x*4.1 + seed*1.7)*Math.sin(v.y*3.3 + seed) +
-      0.10*Math.sin(v.y*7.2 + seed*0.4)*Math.cos(v.z*5.1) +
-      0.05*Math.sin(v.x*13.0 + seed*2.3)*Math.sin(v.z*11.0);
-    v.multiplyScalar(1 + n);
+    // 大きなうねり + 細かな凹凸
+    const big = fbm3(v.x*1.3, v.y*1.3, v.z*1.3, seed, 3);
+    const fine = detail === 1 ? 0 : fbm3(v.x*6, v.y*6, v.z*6, seed + 101, 3);
+    let k = 1 + 0.22*big + 0.05*fine;
+    v.multiplyScalar(k);
+    for(const c of cuts){
+      const dd = v.dot(c.n);
+      if(dd > c.d) v.addScaledVector(c.n, (c.d - dd) * 0.92);
+    }
+    disp[i] = v.length();
     v.y *= flat;
+    v.multiplyScalar(r);
     pos.setXYZ(i, v.x, v.y, v.z);
   }
+  // 接地面をわずかに平らにして据わりを良くする
+  let minY = Infinity;
+  for(let i=0; i<pos.count; i++) minY = Math.min(minY, pos.getY(i));
+  const floorY = minY + r * flat * 0.12;
+  for(let i=0; i<pos.count; i++) if(pos.getY(i) < floorY) pos.setY(i, floorY - (floorY - pos.getY(i)) * 0.25);
   geo.computeVertexNormals();
+
+  // 頂点色: 基調色のむら・凹部を暗く・上向き面に苔/地衣類
+  const base = new THREE.Color(mat.color);
+  const moss = new THREE.Color(0x4a5a2c);
+  const lichen = new THREE.Color(0xa8a38a);
+  const nrm = geo.attributes.normal;
+  const col = new Float32Array(pos.count * 3);
+  let dmin = Infinity, dmax = -Infinity;
+  for(const d of disp){ dmin = Math.min(dmin, d); dmax = Math.max(dmax, d); }
+  const cc = new THREE.Color();
+  for(let i=0; i<pos.count; i++){
+    const x = pos.getX(i)/r, y = pos.getY(i)/r, z = pos.getZ(i)/r;
+    const cavity = (disp[i] - dmin) / Math.max(1e-5, dmax - dmin);          // 0=凹 1=凸
+    const mottle = fbm3(x*4, y*4, z*4, seed + 7, 3);
+    cc.copy(base).multiplyScalar(0.72 + 0.38*cavity + 0.18*mottle);
+    const up = nrm.getY(i);
+    const mossMask = THREE.MathUtils.smoothstep(up, 0.45, 0.9) *
+                     THREE.MathUtils.smoothstep(fbm3(x*3, y*3, z*3, seed + 33, 3), -0.05, 0.25);
+    cc.lerp(moss, mossMask * 0.55);
+    const lichenMask = THREE.MathUtils.smoothstep(fbm3(x*9, y*9, z*9, seed + 55, 2), 0.28, 0.4);
+    cc.lerp(lichen, lichenMask * 0.2);
+    col[i*3] = cc.r; col[i*3+1] = cc.g; col[i*3+2] = cc.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(geo, mat));
+  g.add(new THREE.Mesh(geo, MAT_ROCK));
   return g;
 }
 
@@ -501,14 +932,201 @@ function makeLantern(){
   return g;
 }
 
+function makeSteppingStones(){
+  const g = new THREE.Group();
+  [[-0.45, -0.5, 7], [0.05, 0, 13], [-0.35, 0.55, 21]].forEach(([x, z, seed], i) => {
+    const s = makeRock({ r:0.24 + 0.03*(i%2), flat:0.22, seed, detail:2, mat: i%2 ? MAT.stone : MAT.stoneD });
+    s.position.set(x, 0, z);
+    g.add(s);
+  });
+  return g;
+}
+
+function makeMaple(){
+  const g = new THREE.Group();
+  const t1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.09, 1.0, 7), MAT.trunk);
+  t1.position.y = 0.5; t1.rotation.z = -0.09;
+  const t2 = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.7, 6), MAT.trunk);
+  t2.position.set(-0.14, 1.15, 0.03); t2.rotation.z = 0.28;
+  g.add(t1, t2);
+  const canopy = (r, sy, x, y, z, mat) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 5), mat);
+    m.scale.y = sy; m.position.set(x, y, z);
+    g.add(m);
+  };
+  canopy(0.70, 0.50, -0.10, 1.60,  0.00, MAT.mapleD);
+  canopy(0.55, 0.48,  0.35, 1.45,  0.10, MAT.maple);
+  canopy(0.45, 0.50, -0.50, 1.35, -0.12, MAT.maple);
+  canopy(0.40, 0.45,  0.05, 1.95, -0.05, MAT.mapleD);
+  return g;
+}
+
+function makeBambooFence(){
+  const g = new THREE.Group();
+  const H = 1.15;
+  for(let x=-0.48; x<=0.481; x+=0.048){
+    const cane = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.021, H, 6), MAT.bamboo);
+    cane.position.set(x, H/2, 0);
+    g.add(cane);
+  }
+  [0.18, 0.55, 0.92].forEach(y => {   // 押縁(横竹)
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 1.02, 6), MAT.bambooD);
+    r.rotation.z = Math.PI/2; r.position.set(0, y, 0.033);
+    g.add(r);
+  });
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.02, 7), MAT.bambooD);  // 玉縁
+  top.rotation.z = Math.PI/2; top.position.y = H + 0.02;
+  g.add(top);
+  return g;
+}
+
+function makeDeck(){
+  const g = new THREE.Group();
+  const W = 1.8, D = 0.9, H = 0.3, n = 6;
+  for(let i=0; i<n; i++){
+    const p = new THREE.Mesh(new THREE.BoxGeometry(W, 0.028, D/n * 0.9), MAT.deck);
+    p.position.set(0, H, -D/2 + D/n * (i + 0.5));
+    g.add(p);
+  }
+  [[0, -D/2 + 0.01], [0, D/2 - 0.01]].forEach(([x, z]) => {  // 幕板
+    const s = new THREE.Mesh(new THREE.BoxGeometry(W, 0.1, 0.022), MAT.wood);
+    s.position.set(x, H - 0.06, z);
+    g.add(s);
+  });
+  [[-W/2+0.08, -D/2+0.08], [W/2-0.08, -D/2+0.08], [-W/2+0.08, D/2-0.08], [W/2-0.08, D/2-0.08], [0, -D/2+0.08], [0, D/2-0.08]].forEach(([x, z]) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, H, 0.07), MAT.wood);
+    leg.position.set(x, H/2, z);
+    g.add(leg);
+  });
+  return g;
+}
+
+function makeTsukubai(){
+  const g = new THREE.Group();
+  const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.25, 0.4, 10), MAT.stoneD);
+  basin.position.y = 0.2;
+  g.add(basin);
+  const water = new THREE.Mesh(new THREE.CircleGeometry(0.155, 24), MAT.water);
+  water.rotation.x = -Math.PI/2; water.position.y = 0.402;
+  g.add(water);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.62, 6), MAT.bambooD);  // 筧の支柱
+  post.position.set(0.38, 0.31, 0);
+  g.add(post);
+  const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.34, 6), MAT.bamboo);    // 筧
+  spout.rotation.z = Math.PI/2; spout.rotation.y = 0.06;
+  spout.position.set(0.22, 0.58, 0);
+  g.add(spout);
+  [[-0.3, 0.12, 2], [0.1, 0.34, 9], [-0.15, -0.3, 15]].forEach(([x, z, seed]) => {  // 役石
+    const s = makeRock({ r:0.09, flat:0.6, seed, detail:1, mat:MAT.stone });
+    s.position.set(x, 0, z);
+    g.add(s);
+  });
+  return g;
+}
+
+function makeGravel(){
+  const g = new THREE.Group();
+  const tex = makeSpeckleTexture('#B4B0A2', ['#A7A396', '#8F8C80', '#C5C1B2', '#7D7A70'], 1500, 2, 5);
+  tex.repeat.set(2, 2);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshStandardMaterial({ map:tex, roughness:1 }));
+  m.rotation.x = -Math.PI/2;
+  m.userData.noShadow = true;   // 地面材は影を落とさない
+  g.add(m);
+  return g;
+}
+
+/* 芝(高麗芝)の季節ごとのテクスチャ: 生育期=緑 / 4月・11月=移行期 / 12〜3月=休眠(枯れ色) */
+const _lawnTex = {};
+function lawnTexture(month){
+  const key = (month >= 5 && month <= 10) ? 'green' : (month === 4 || month === 11) ? 'mid' : 'dormant';
+  if(!_lawnTex[key]){
+    const pal = {
+      green:   ['#5F7847', ['#4E6639', '#6B8752', '#3F5530', '#77935C']],
+      mid:     ['#7D8150', ['#6B7443', '#948E5C', '#5E6A3C', '#A39866']],
+      dormant: ['#A08C62', ['#8F7B55', '#B29E72', '#7E6C4B', '#BFAE85']],
+    }[key];
+    _lawnTex[key] = makeSpeckleTexture(pal[0], pal[1], 2400, 1, 3);
+    _lawnTex[key].repeat.set(2, 2);
+  }
+  return _lawnTex[key];
+}
+
+function makeLawn(){
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ map: lawnTexture(6), roughness:1 });
+  mat.userData.role = 'lawn';
+  const m = new THREE.Mesh(new THREE.CircleGeometry(1, 40), mat);
+  m.rotation.x = -Math.PI/2;
+  m.userData.noShadow = true;
+  g.add(m);
+  return g;
+}
+
 /* ================= モデルライブラリ ================= */
 
 const loader = new GLTFLoader();
 const draco = new DRACOLoader();
 draco.setDecoderPath('./vendor/three/addons/libs/draco/');
 loader.setDRACOLoader(draco);
+loader.setMeshoptDecoder(MeshoptDecoder);   // gltf-transform で軽量化したGLB用
 
-/** @type {{name:string, template:THREE.Group, size:THREE.Vector3, tris:number, preset:boolean}[]} */
+/* ---------- 永続化(IndexedDB: GLB / localStorage: 配置・アンカー) ---------- */
+const LS_LAYOUT = 'sekitei.layout.v1';
+const LS_ANCHOR = 'sekitei.anchor.v1';
+
+let dbPromise = null;
+function openDB(){
+  if(dbPromise) return dbPromise;
+  dbPromise = new Promise((res, rej) => {
+    const req = indexedDB.open('sekitei', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('glbs', { keyPath:'id' });
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+  return dbPromise;
+}
+async function dbPut(rec){
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('glbs', 'readwrite');
+    tx.objectStore('glbs').put(rec);
+    tx.oncomplete = res;
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function dbDelete(id){
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('glbs', 'readwrite');
+    tx.objectStore('glbs').delete(id);
+    tx.oncomplete = res;
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function dbPatch(id, patch){
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('glbs', 'readwrite');
+    const store = tx.objectStore('glbs');
+    const req = store.get(id);
+    req.onsuccess = () => { if(req.result) store.put(Object.assign(req.result, patch)); };
+    tx.oncomplete = res;
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function dbGetAll(){
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const req = db.transaction('glbs').objectStore('glbs').getAll();
+    req.onsuccess = () => res(req.result || []);
+    req.onerror = () => rej(req.error);
+  });
+}
+function newFileId(){
+  return 'f:' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
+}
+
+/** @type {{id:string, name:string, template:THREE.Group, size:THREE.Vector3, tris:number, preset:boolean, real?:boolean, credit?:string}[]} */
 const models = [];
 let activeIndex = 0;
 
@@ -523,32 +1141,128 @@ function countTris(root){
   return Math.round(t);
 }
 
+/* 体積(m³)を発散定理(符号付き四面体体積の総和)で求める。
+   底面中心を原点にした状態で計算するので、底が開いたスキャン(接地面未撮影)でも
+   欠けた底面の寄与はほぼ0になり、体積が大きく狂わない。 */
+function computeVolume(root){
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert();
+  const m = new THREE.Matrix4();
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  let total = 0;
+  root.traverse(o => {
+    if(!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    m.multiplyMatrices(inv, o.matrixWorld);
+    const pos = o.geometry.attributes.position, idx = o.geometry.index;
+    const n = idx ? idx.count : pos.count;
+    let v = 0;
+    for(let i=0; i+2<n; i+=3){
+      a.fromBufferAttribute(pos, idx ? idx.getX(i)   : i  ).applyMatrix4(m);
+      b.fromBufferAttribute(pos, idx ? idx.getX(i+1) : i+1).applyMatrix4(m);
+      c.fromBufferAttribute(pos, idx ? idx.getX(i+2) : i+2).applyMatrix4(m);
+      v += a.dot(b.cross(c)) / 6;
+    }
+    total += m.determinant() < 0 ? -v : v;   // 鏡像変換されたメッシュは向きが反転する
+  });
+  return Math.abs(total);
+}
+
+/* 比重(t/m³)の選択肢。重量は 体積×比重 の目安 */
+/* 素材の種類: 石は比重(t/m³)で重量を、樹木は成長の目安(年あたりの伸び・最大樹高 m)を持つ。
+   成長は剪定しない場合のおおよその値 */
+const KINDS = [
+  { id: 'granite',   label: '石: 御影石・花崗岩（比重2.65）', density: 2.65 },
+  { id: 'andesite',  label: '石: 安山岩・一般の庭石（比重2.6）', density: 2.6 },
+  { id: 'sandstone', label: '石: 砂岩・凝灰岩（比重2.3）', density: 2.3 },
+  { id: 'decid',     label: '落葉樹（モミジ等・年40cm）', plant: { rate: 0.4,  max: 10,  decid: true } },
+  { id: 'ever',      label: '常緑樹（マツ・カシ等・年30cm）', plant: { rate: 0.3,  max: 8 } },
+  { id: 'shrub',     label: '低木（ツツジ等・年8cm）', plant: { rate: 0.08, max: 1.5 } },
+  { id: 'none',      label: 'その他（重量・成長なし）' },
+];
+const DEFAULT_KIND = 'andesite';
+const kindById = (id) => KINDS.find(k => k.id === id) || KINDS.find(k => k.id === 'none');
+/* 旧形式(比重だけ保存)からの読み替え */
+function kindFromDensity(d){
+  if(d == null) return DEFAULT_KIND;
+  if(!d) return 'none';
+  return d >= 2.63 ? 'granite' : d <= 2.4 ? 'sandstone' : 'andesite';
+}
+function setKind(m, id){
+  const k = kindById(id);
+  m.kind = k.id;
+  m.density = k.density || 0;
+  m.plant = k.plant || null;
+}
+
+/* 推定重量(t)。体積が信頼できない形状(平面・破綻したメッシュ)は null */
+function modelWeight(m, scale = 1){
+  if(!m || !m.density || !m.volume) return null;
+  return m.volume * m.density * scale * scale * scale;
+}
+function fmtWeight(t){
+  if(t == null) return '';
+  return t >= 1 ? `約${t.toFixed(1)}t` : `約${Math.max(10, Math.round(t * 100) * 10)}kg`;
+}
+
 /* 底面中心を原点に正規化してテンプレート化 */
-function addModel(name, rawRoot, { preset=false, lift=0, select=false } = {}){
+function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='', kind='none', density=null } = {}){
   const box = new THREE.Box3().setFromObject(rawRoot);
-  if(box.isEmpty()){ alert(`「${name}」にメッシュが見つかりませんでした`); return; }
+  if(box.isEmpty()){ alert(`「${name}」にメッシュが見つかりませんでした`); return null; }
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
   rawRoot.position.sub(new THREE.Vector3(center.x, box.min.y, center.z));
   rawRoot.position.y += lift;
+  rawRoot.traverse(o => {
+    if(o.isMesh){
+      o.castShadow = o.material !== MAT.water && !o.userData.noShadow;   // 水面・地面材は影を落とさない
+      o.receiveShadow = true;
+    }
+  });
   const template = new THREE.Group();
   template.add(rawRoot);
-  models.push({ name, template, size, tris: countTris(rawRoot), preset });
+  // 体積はバウンディングボックスの2%〜105%に収まるときだけ採用(板状・開いたメッシュ等は除外)
+  let volume = computeVolume(template);
+  const boxVol = size.x * size.y * size.z;
+  if(!(volume >= 0.0005 && volume > boxVol * 0.02 && volume < boxVol * 1.05)) volume = 0;
+  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset, real, credit, volume };
+  setKind(entry, kind);
+  if(density != null && !entry.plant) entry.density = density;   // manifest で比重を直接指定した場合
+  models.push(entry);
   if(select) activeIndex = models.length - 1;
   refreshLibraryUI();
   refreshXRLabel();
   refreshPreview();
+  scheduleThumbs();
+  return entry;
 }
 
 /* ---------- ファイル読み込み ---------- */
 const fileInput = document.getElementById('file-input');
 document.getElementById('add-file-btn').addEventListener('click', () => fileInput.click());
+/* 単位ずれの検出: 庭の素材で30mを超えるものはcm(またはmm)単位で作られている可能性が高い */
+function suggestUnitScale(root, name){
+  const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  if(maxDim <= 30) return 1;
+  const [scale, unit] = maxDim > 3000 ? [0.001, 'mm'] : [0.01, 'cm'];
+  const fixed = maxDim * scale;
+  const fmt = (n) => n >= 1 ? n.toFixed(2) + 'm' : Math.round(n * 100) + 'cm';
+  return confirm(`「${name}」は最大 ${fmt(maxDim)} あります。${unit}単位で作られた素材の可能性があります。\n\n${unit}→m に補正して ${fmt(fixed)} にしますか？\n（キャンセルでそのままの大きさ）`) ? scale : 1;
+}
+
 fileInput.addEventListener('change', async (e) => {
   for(const file of e.target.files){
     try{
       const buf = await file.arrayBuffer();
       const gltf = await new Promise((res, rej) => loader.parse(buf, '', res, rej));
-      addModel(file.name.replace(/\.(glb|gltf)$/i,''), gltf.scene, { select:true });
+      const name = file.name.replace(/\.(glb|gltf)$/i,'');
+      const unitScale = suggestUnitScale(gltf.scene, name);
+      gltf.scene.scale.multiplyScalar(unitScale);
+      const entry = addModel(name, gltf.scene, { select:true, kind:DEFAULT_KIND });
+      if(entry){
+        dbPut({ id: entry.id, name: entry.name, buffer: buf, unitScale, kind: entry.kind, addedAt: Date.now() })
+          .catch(err => console.warn('GLBの保存に失敗しました（次回起動時は復元されません）:', err));
+      }
     }catch(err){
       console.error(err);
       alert(`「${file.name}」の読み込みに失敗しました。\nテクスチャ埋め込み済みの .glb 形式を推奨します。\n(${err.message || err})`);
@@ -557,40 +1271,118 @@ fileInput.addEventListener('change', async (e) => {
   fileInput.value = '';
 });
 
+/* 前回読み込んだGLBをIndexedDBから復元 */
+async function restoreSavedGLBs(){
+  try{
+    const recs = await dbGetAll();
+    recs.sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));   // 追加した順に並べる(IndexedDBはID順で返すため)
+    for(const rec of recs){
+      try{
+        const gltf = await new Promise((res, rej) => loader.parse(rec.buffer, '', res, rej));
+        if(rec.unitScale) gltf.scene.scale.multiplyScalar(rec.unitScale);
+        addModel(rec.name, gltf.scene, { id: rec.id, kind: rec.kind || kindFromDensity(rec.density) });
+      }catch(err){
+        console.warn('保存済みGLBの復元に失敗:', rec.name, err);
+      }
+    }
+  }catch(err){
+    console.warn('IndexedDBを利用できないため、GLBの保存・復元は無効です:', err);
+  }
+}
+
+/* presets/manifest.json に登録されたリアル素材(ダウンロード/スキャンしたGLB)を読み込む */
+async function loadManifestPresets(){
+  let manifest;
+  try{
+    const res = await fetch('presets/manifest.json', { cache:'no-cache' });
+    if(!res.ok) return;
+    manifest = await res.json();
+  }catch(err){
+    return;   // manifest が無い/読めない場合は手続き生成プリセットのみで動く
+  }
+  const list = (Array.isArray(manifest.models) ? manifest.models : []).filter(it => it && it.file);
+  if(!list.length) return;
+
+  realLabelEl.hidden = realListEl.hidden = false;
+  let done = 0;
+  const setProgress = () => { realLabelEl.textContent = `リアル素材（読み込み中 ${done}/${list.length}）`; };
+  setProgress();
+  // 並列に読み込み、登録は manifest の順番で行う
+  const results = await Promise.all(list.map(item =>
+    loader.loadAsync('presets/' + item.file)
+      .then(gltf => ({ item, gltf }), err => ({ item, err }))
+      .finally(() => { done++; setProgress(); })
+  ));
+  const failed = [];
+  for(const { item, gltf, err } of results){
+    if(err){ console.warn('リアル素材の読み込みに失敗:', item.file, err); failed.push(item.name || item.file); continue; }
+    const root = gltf.scene;
+    if(item.scale) root.scale.setScalar(Number(item.scale) || 1);
+    const credit = [item.credit, item.license].filter(Boolean).join(' · ');
+    addModel(item.name || item.file, root, { preset:true, real:true, id:'m:' + (item.id || item.file), credit,
+      kind: item.kind || 'none', density: item.density != null ? Number(item.density) || 0 : null });
+  }
+  realLabelEl.textContent = failed.length ? `リアル素材（${failed.length}件 読み込み失敗: ${failed.join('、')}）` : 'リアル素材';
+}
+
 /* ---------- ランチャーUI ---------- */
+const realLabelEl = document.getElementById('real-label');
+const realListEl = document.getElementById('real-list');
 const presetListEl = document.getElementById('preset-list');
 const fileListEl = document.getElementById('file-list');
 
+function fmtLen(n){ return n >= 1 ? n.toFixed(2)+'m' : Math.round(n*100)+'cm'; }
 function fmtDims(s){
-  const f = (n) => n >= 1 ? n.toFixed(2)+'m' : Math.round(n*100)+'cm';
-  return `${f(s.x)} × ${f(s.z)} × 高${f(s.y)}`;
+  return `${fmtLen(s.x)} × ${fmtLen(s.z)} × 高${fmtLen(s.y)}`;
 }
 
 function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function refreshLibraryUI(){
+  realListEl.innerHTML = '';
   presetListEl.innerHTML = '';
   fileListEl.innerHTML = '';
   models.forEach((m, i) => {
     const li = document.createElement('li');
     if(i === activeIndex) li.classList.add('active');
     const heavy = m.tris > 300000;
+    const showTris = !m.preset || m.real;
+    const w = modelWeight(m);
+    const densitySelect = m.preset ? '' : `
+        <select class="m-density" title="種類（石は重量、樹木は成長の計算に使います）">
+          ${KINDS.map(k => `<option value="${k.id}"${k.id === m.kind ? ' selected' : ''}>${k.label}</option>`).join('')}
+        </select>`;
     li.innerHTML = `
-      <span class="mark"></span>
+      ${m.thumb ? `<img class="m-thumb" src="${m.thumb}" alt="">` : '<span class="mark"></span>'}
       <span class="m-info">
         <span class="m-name">${escapeHtml(m.name)}</span>
-        <span class="m-dims">${fmtDims(m.size)}${m.preset ? '' : `　${(m.tris/10000).toFixed(1)}万△` + (heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : '')}</span>
+        <span class="m-dims">${fmtDims(m.size)}${w != null ? `　<b>${fmtWeight(w)}</b>` : ''}${showTris ? `　${m.tris >= 10000 ? (m.tris/10000).toFixed(1) + '万' : m.tris}△` +(heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : '') : ''}</span>
+        ${m.density && !m.volume ? '<span class="m-credit">形状から体積を計算できないため重量は出せません</span>' : ''}
+        ${m.credit ? `<span class="m-credit">${escapeHtml(m.credit)}</span>` : ''}${densitySelect}
       </span>
       ${m.preset ? '' : '<button class="m-del" title="削除">✕</button>'}`;
     li.addEventListener('click', () => { activeIndex = i; refreshLibraryUI(); refreshXRLabel(); refreshPreview(); });
+    const sel = li.querySelector('.m-density');
+    if(sel){
+      sel.addEventListener('click', ev => ev.stopPropagation());
+      sel.addEventListener('change', () => {
+        setKind(m, sel.value);
+        dbPatch(m.id, { kind: m.kind }).catch(() => {});
+        applyGrowthAll();
+        refreshLibraryUI();
+        updateLayoutStatus();
+      });
+    }
     const del = li.querySelector('.m-del');
     if(del) del.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      models.splice(i, 1);
+      const [removed] = models.splice(i, 1);
+      if(removed && !removed.preset) dbDelete(removed.id).catch(() => {});
+      if(i < activeIndex) activeIndex--;
       if(activeIndex >= models.length) activeIndex = models.length - 1;
       refreshLibraryUI(); refreshXRLabel(); refreshPreview();
     });
-    (m.preset ? presetListEl : fileListEl).appendChild(li);
+    (m.real ? realListEl : m.preset ? presetListEl : fileListEl).appendChild(li);
   });
   if(!fileListEl.children.length){
     fileListEl.innerHTML = '<li style="cursor:default; color:var(--ink-soft); font-size:12px; border-style:dashed;">まだありません — 下のボタンから追加</li>';
@@ -605,6 +1397,7 @@ function refreshPreview(){
   const m = models[activeIndex];
   if(!m) return;
   previewObj = m.template.clone(true);
+  applySeasonTo(previewObj);
   scene.add(previewObj);
 }
 
@@ -612,6 +1405,12 @@ function refreshPreview(){
 
 const supportEl = document.getElementById('support');
 const startBtn = document.getElementById('start-btn');
+/* 実物による遮蔽の設定(この端末に記憶) */
+const occlusionOpt = document.getElementById('opt-occlusion');
+try{ occlusionOpt.checked = localStorage.getItem('sekitei.occlusion') !== 'off'; }catch(err){}
+occlusionOpt.addEventListener('change', () => {
+  try{ localStorage.setItem('sekitei.occlusion', occlusionOpt.checked ? 'on' : 'off'); }catch(err){}
+});
 let xrSupported = false;
 
 function setSupport(text, cls){
@@ -661,12 +1460,26 @@ let xrSession = null;
 
 startBtn.addEventListener('click', async () => {
   if(!xrSupported) return;
+  xrSession = null;
   try{
-    xrSession = await navigator.xr.requestSession('immersive-ar', {
+    const base = {
       requiredFeatures: ['local-floor', 'hit-test'],
-      optionalFeatures: ['dom-overlay'],
+      optionalFeatures: ['dom-overlay', 'anchors', 'hand-tracking'],
       domOverlay: { root: xrOverlay }
-    });
+    };
+    if(occlusionOpt.checked){
+      // 現実の奥行き(Depth API)で仮想物を隠す。three.js が遮蔽用の深度を自動で描き込む
+      try{
+        xrSession = await navigator.xr.requestSession('immersive-ar', {
+          ...base,
+          optionalFeatures: [...base.optionalFeatures, 'depth-sensing'],
+          depthSensing: { usagePreference: ['gpu-optimized'], dataFormatPreference: [] }
+        });
+      }catch(err){
+        console.warn('depth-sensing 付きで開始できないため、遮蔽なしで開始します:', err);
+      }
+    }
+    if(!xrSession) xrSession = await navigator.xr.requestSession('immersive-ar', base);
   }catch(err){
     alert('MRセッションを開始できませんでした:\n' + (err.message || err));
     return;
@@ -677,41 +1490,424 @@ startBtn.addEventListener('click', async () => {
 
 renderer.xr.addEventListener('sessionstart', () => {
   launcher.style.display = 'none';
-  previewGround.visible = false;
-  if(previewObj){ scene.remove(previewObj); previewObj = null; }
-  renderer.setClearColor(0x000000, 0);   // パススルー
-  /* dom-overlayが実際に有効になったときだけHTML製UIを使う。
-     Meta Questのブラウザは非対応なので、代わりに3D HUDを表示する */
+  /* dom-overlay が実際に有効になったときだけHTML製UIを使う。
+     Meta Quest のブラウザは非対応なので、代わりに3D HUDとコントローラーのボタンで操作する */
   const domOverlayActive = !!(xrSession && xrSession.domOverlayState && xrSession.domOverlayState.type);
   if(domOverlayActive) xrOverlay.classList.add('on');
   hudActive = !domOverlayActive;
   hud.visible = hudActive;
   hudSnap = true;
   hudDirty = true;
+  refreshPreviewGround();
+  if(previewObj){ scene.remove(previewObj); previewObj = null; }
+  renderer.setClearColor(0x000000, 0);   // パススルー
+  shadowGround.visible = true;
   setupHitTest();
+  initAnchor(xrSession);
+  refreshObjBar();
   refreshXRLabel();
   updateCount();
-  toast('床に向けてトリガーで設置');
+  const n = placedGroup.children.length;
+  toast(n ? `前回の配置 ${n}個を復元しました` : '床に向けてトリガーで設置');
+  // 深度データは最初の数フレーム後に届くので、少し待ってから遮蔽の状態を知らせる
+  if(occlusionOpt.checked){
+    const session = xrSession;
+    setTimeout(() => {
+      if(xrSession !== session) return;
+      toast(renderer.xr.hasDepthSensing() ? '実物による遮蔽: 有効' : '実物による遮蔽: この端末・ブラウザでは使えません');
+    }, 2500);
+  }
 });
 
 renderer.xr.addEventListener('sessionend', () => {
+  xrSession = null;
   launcher.style.display = '';
   xrOverlay.classList.remove('on');
-  previewGround.visible = true;
+  refreshPreviewGround();
   renderer.setClearColor(0xEAE7DC, 1);
   hitSources.clear();
-  btnState.clear();
   hovered = null; grabbed = null;
   boxHelper.visible = false;
   reticle.visible = false;
+  xrAnchor = null; needCreateAnchor = false;
+  anchorRoot.position.set(0, 0, 0);
+  anchorRoot.quaternion.identity();
+  shadowGround.visible = false;
+  shadowGround.position.set(0, 0, 0);
+  northMode = false;
+  groundMode = false;
+  closeXRPanels();
+  setSelected(null);
+  selHelper.visible = false;
+  lastTargetText = ''; currentTarget = null;
+  xrTargetEl.classList.remove('on');
+  measureMode = false;
+  measurePts.length = 0;
+  measureGroup.clear();
+  updateModeChip();
+  btnState.clear();
   hud.visible = false;
   hudActive = false;
+  saveLayoutNow();
   refreshPreview();
 });
 
-/* ---------- コントローラー ---------- */
+/* ---------- 設置オブジェクトと空間アンカー ---------- */
+/* anchorRoot は永続アンカーのポーズに追従する。設置物はその中に相対配置され、
+   次回セッションでも実空間の同じ場所に復元される(アンカー非対応時は原点=床基準)。 */
+const anchorRoot = new THREE.Group();
+scene.add(anchorRoot);
 const placedGroup = new THREE.Group();
-scene.add(placedGroup);
+anchorRoot.add(placedGroup);
+
+let xrAnchor = null;
+let needCreateAnchor = false;
+
+async function initAnchor(session){
+  xrAnchor = null;
+  needCreateAnchor = false;
+  const feats = session.enabledFeatures;
+  if(feats && !feats.includes('anchors')) return;
+  const handle = localStorage.getItem(LS_ANCHOR);
+  if(handle && session.restorePersistentAnchor){
+    try{
+      const a = await session.restorePersistentAnchor(handle);
+      if(xrSession === session){ xrAnchor = a; toast('前回の基準点に位置合わせしました'); }
+      return;
+    }catch(err){
+      console.warn('永続アンカーの復元に失敗（作り直します）:', err);
+      localStorage.removeItem(LS_ANCHOR);
+    }
+  }
+  if(xrSession === session) needCreateAnchor = true;
+}
+
+/* フレーム毎: アンカー作成(初回のみ)とポーズ追従 */
+function updateAnchor(frame){
+  const refSpace = renderer.xr.getReferenceSpace();
+  if(!refSpace) return;
+  if(needCreateAnchor){
+    needCreateAnchor = false;
+    if(frame.createAnchor){
+      const session = xrSession;
+      frame.createAnchor(new XRRigidTransform(), refSpace).then(async (a) => {
+        if(xrSession !== session) return;
+        xrAnchor = a;
+        if(a.requestPersistentHandle){
+          try{ localStorage.setItem(LS_ANCHOR, await a.requestPersistentHandle()); }
+          catch(err){ console.warn('アンカーの永続化に失敗:', err); }
+        }
+      }).catch(err => console.warn('アンカー作成に失敗:', err));
+    }
+  }
+  if(xrAnchor){
+    try{
+      const pose = frame.getPose(xrAnchor.anchorSpace, refSpace);
+      if(pose){
+        const p = pose.transform.position, q = pose.transform.orientation;
+        anchorRoot.position.set(p.x, p.y, p.z);
+        anchorRoot.quaternion.set(q.x, q.y, q.z, q.w);
+      }
+    }catch(err){ /* アンカー消失時はそのまま続行 */ }
+  }
+}
+
+/* ---------- 設置インスタンス(根入れ用の地面クリップ付き) ----------
+   userData.sink = 根入れ深さ(m)。正=埋める / 負=浮かせる。
+   パススルーでは現実の地面が仮想物を隠してくれないため、各設置物の地表レベルより下を
+   クリッピング平面で描画しない(影も同様)。平面は設置物ごとに持つので傾斜地でも各自の地表で切れる。 */
+function prepareInstance(inst){
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  inst.userData.clipPlane = plane;
+  const withClip = (mat) => { const c = mat.clone(); c.clippingPlanes = [plane]; c.clipShadows = true; return c; };
+  inst.traverse(o => {
+    if(o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(withClip) : withClip(o.material);
+  });
+  return inst;
+}
+function makeInstance(m){
+  const inst = m.template.clone(true);
+  inst.userData.modelId = m.id;
+  inst.userData.modelName = m.name;
+  inst.userData.baseSize = m.size;
+  inst.userData.sink = 0;
+  // 成長表示用の入れ子: 利用者の拡縮(inst.scale)とは別に、樹木の年数分の成長をここで掛ける
+  const grow = new THREE.Group();
+  grow.name = 'growth';
+  while(inst.children.length) grow.add(inst.children[0]);
+  inst.add(grow);
+  prepareInstance(inst);
+  applySeasonTo(inst);
+  return inst;
+}
+function removeInstance(inst){
+  if(selectedObj === inst) setSelected(null);
+  placedGroup.remove(inst);
+  inst.traverse(o => {   // 複製した材質だけ破棄(テクスチャ・形状はテンプレートと共有)
+    if(o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => mt.dispose());
+  });
+}
+function clearPlaced(){
+  for(const o of [...placedGroup.children]) removeInstance(o);
+  setSelected(null);
+}
+
+/* ---------- 地形(地面の高さの記録) ----------
+   Quest の hit-test は屋外の起伏を認識できないため、コントローラーの先端を地面に当てて
+   高さを記録し、その点群を逆距離加重(IDW)でなめらかにつないだ面を地形として使う。
+   点はアンカー基準の座標で保存するので、次回も同じ場所に復元される。 */
+const LS_GROUND = 'sekitei.ground.v1';
+const GROUND_TIP_OFFSET = 0.02;   // コントローラーの光線の起点から先端の接地点までのおおよその差(m)
+const terrainGroup = new THREE.Group();   // placedGroup と同じ座標系(アンカー直下・無回転)
+anchorRoot.add(terrainGroup);
+let groundPts = [];
+try{ groundPts = JSON.parse(localStorage.getItem(LS_GROUND) || '[]'); }catch(err){}
+let terrainMesh = null, terrainShadow = null, terrainSurface = null, terrainShown = false;
+
+function terrainHeight(x, z){
+  if(!groundPts.length) return 0;
+  let sw = 0, sy = 0;
+  for(const [px, py, pz] of groundPts){
+    const d2 = (x - px) ** 2 + (z - pz) ** 2;
+    if(d2 < 1e-8) return py;
+    const w = 1 / d2;
+    sw += w; sy += w * py;
+  }
+  return sy / sw;
+}
+function terrainNormal(x, z, out = new THREE.Vector3()){
+  const e = 0.05;
+  const dx = terrainHeight(x + e, z) - terrainHeight(x - e, z);
+  const dz = terrainHeight(x, z + e) - terrainHeight(x, z - e);
+  return out.set(-dx / (2 * e), 1, -dz / (2 * e)).normalize();
+}
+
+function rebuildTerrain(){
+  for(const o of [...terrainGroup.children]){
+    terrainGroup.remove(o);
+    o.traverse(c => { if(c.geometry) c.geometry.dispose(); if(c.material) c.material.dispose(); });
+  }
+  terrainMesh = terrainShadow = terrainSurface = null;
+  if(groundPts.length){
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for(const [x, , z] of groundPts){ minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+    const M = 4;   // 記録した範囲の外側にも少し広げる
+    const w = maxX - minX + 2*M, d = maxZ - minZ + 2*M;
+    const nx = Math.min(80, Math.ceil(w / 0.2)), nz = Math.min(80, Math.ceil(d / 0.2));
+    const geo = new THREE.PlaneGeometry(w, d, nx, nz);
+    geo.rotateX(-Math.PI / 2);
+    geo.translate((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+    const pos = geo.attributes.position;
+    for(let i=0; i<pos.count; i++) pos.setY(i, terrainHeight(pos.getX(i), pos.getZ(i)));
+    geo.computeVertexNormals();
+    // 光線判定用(表示は切り替え)。線表示で起伏が分かるようにする
+    terrainMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x5F7052, wireframe: true, transparent: true, opacity: 0.35 }));
+    terrainMesh.material.visible = terrainShown;
+    // 影を受ける面(深度とのちらつき防止に少し浮かせる)
+    terrainShadow = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    terrainShadow.position.y = SHADOW_LIFT;
+    terrainShadow.receiveShadow = true;
+    // PC表示用の地面(MR中は現実の地面が見えるので出さない)
+    terrainSurface = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xDDD9CA, roughness: 1 }));
+    terrainSurface.receiveShadow = true;
+    terrainGroup.add(terrainMesh, terrainShadow, terrainSurface);
+    // 記録した点の目印
+    const pinGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.12, 8);
+    pinGeo.translate(0, 0.06, 0);
+    const pinMat = new THREE.MeshBasicMaterial({ color: 0xC0503C, depthTest: false });
+    for(const [x, y, z] of groundPts){
+      const pin = new THREE.Mesh(pinGeo, pinMat);
+      pin.position.set(x, y, z);
+      pin.visible = terrainShown;
+      pin.userData.isPin = true;
+      terrainGroup.add(pin);
+    }
+  }
+  shadowGround.material.visible = !terrainShadow;   // 地形があるときは地形の面に影を落とす
+  refreshPreviewGround();
+  refreshGroundUI();
+}
+/* PC表示の地面: 地形を記録していればその起伏、なければ枯山水の円盤。MR中はどちらも出さない */
+function refreshPreviewGround(){
+  const xr = renderer.xr.isPresenting;
+  previewGround.visible = !xr && !terrainSurface;
+  if(terrainSurface) terrainSurface.visible = !xr;
+}
+function setTerrainShown(on){
+  terrainShown = on;
+  if(terrainMesh) terrainMesh.material.visible = on;
+  terrainGroup.children.forEach(o => { if(o.userData.isPin) o.visible = on; });
+  refreshGroundUI();
+}
+function saveGround(){
+  try{ localStorage.setItem(LS_GROUND, JSON.stringify(groundPts)); }catch(err){}
+}
+function setGroundPts(pts, { snap = true } = {}){
+  groundPts = pts;
+  saveGround();
+  rebuildTerrain();
+  if(snap) snapAllToTerrain();
+}
+/* 地形が変わったら、設置物の根元を新しい地表の高さに合わせ直す(根入れ深さは保つ) */
+function snapAllToTerrain(){
+  for(const o of placedGroup.children){
+    o.position.y = terrainHeight(o.position.x, o.position.z) - (o.userData.sink || 0);
+  }
+  scheduleSave();
+}
+function groundSummary(){
+  if(!groundPts.length) return '地面の記録なし（平らな床として扱います）';
+  const ys = groundPts.map(p => p[1]);
+  return `地面の記録 ${groundPts.length}点・高低差 ${fmtLen(Math.max(...ys) - Math.min(...ys))}`;
+}
+
+/* 毎フレーム: 各設置物の地表(position.y + sink)にクリッピング平面を合わせる。
+   地形があるときは斜面の傾きにも合わせる */
+const _ground = new THREE.Vector3(), _gn = new THREE.Vector3(), _q = new THREE.Quaternion();
+function updateClipPlanes(){
+  placedGroup.updateWorldMatrix(true, false);
+  placedGroup.getWorldQuaternion(_q);
+  for(const o of [...placedGroup.children, ...ghostGroup.children]){
+    const pl = o.userData.clipPlane;
+    if(!pl) continue;
+    _ground.set(o.position.x, o.position.y + (o.userData.sink || 0) - 0.001, o.position.z);
+    if(groundPts.length) terrainNormal(o.position.x, o.position.z, _gn); else _gn.set(0, 1, 0);
+    placedGroup.localToWorld(_ground);
+    _gn.applyQuaternion(_q);
+    pl.setFromNormalAndCoplanarPoint(_gn, _ground);
+  }
+}
+
+function anchorYaw(){
+  return new THREE.Euler().setFromQuaternion(anchorRoot.quaternion, 'YXZ').y;
+}
+function worldToPlaced(p){
+  placedGroup.updateWorldMatrix(true, false);
+  return placedGroup.worldToLocal(p.clone());
+}
+
+/* ---------- 配置の保存・復元 ---------- */
+const layoutStatusEl = document.getElementById('layout-status');
+let layoutReady = false;   // 初期復元が終わるまで保存しない(空上書き防止)
+let saveTimer = null;
+
+function serializeLayout(){
+  const r = (v) => Math.round(v * 10000) / 10000;
+  return {
+    app: 'sekitei',
+    version: 1,
+    savedAt: new Date().toISOString(),
+    ground: groundPts,
+    items: placedGroup.children.map(o => ({
+      id: o.userData.modelId,
+      name: o.userData.modelName,
+      pos: [r(o.position.x), r(o.position.y), r(o.position.z)],
+      rotY: r(o.rotation.y),
+      scale: r(o.scale.x),
+      sink: r(o.userData.sink || 0)
+    }))
+  };
+}
+
+function saveLayoutNow(){
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  if(!layoutReady) return;
+  const data = serializeLayout();
+  try{ localStorage.setItem(LS_LAYOUT, JSON.stringify(data)); }
+  catch(err){ console.warn('配置の保存に失敗:', err); }
+  if(plans){ currentPlan().items = data.items; savePlans(); }
+  updateLayoutStatus();
+  updateCount();
+}
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveLayoutNow, 600);
+}
+
+function instantiateFromItem(m, item){
+  const inst = makeInstance(m);
+  inst.userData.sink = Number(item.sink) || 0;
+  inst.position.fromArray(item.pos);
+  inst.rotation.y = item.rotY || 0;
+  inst.scale.setScalar(THREE.MathUtils.clamp(item.scale || 1, 0.05, 10));
+  applyGrowth(inst);
+  placedGroup.add(inst);
+  return inst;
+}
+
+/* 配置データを反映して、見つからなかったモデル数を返す */
+function applyLayout(data){
+  clearPlaced();
+  let missing = 0;
+  for(const item of (data.items || [])){
+    const m = models.find(x => x.id === item.id) || models.find(x => x.name === item.name);
+    if(!m){ missing++; continue; }
+    instantiateFromItem(m, item);
+  }
+  updateCount();
+  updateLayoutStatus();
+  return missing;
+}
+
+function loadSavedLayout(){
+  try{
+    loadPlans();
+    const missing = applyLayout({ items: currentPlan().items });
+    if(missing) console.warn(`配置のうち${missing}個はモデルが見つからず復元できませんでした`);
+  }catch(err){
+    console.warn('配置の復元に失敗:', err);
+  }
+  layoutReady = true;
+  updateLayoutStatus();
+  refreshPlansUI();
+}
+
+function updateLayoutStatus(){
+  const { n, t, stones } = placedTotals();
+  layoutStatusEl.textContent = n
+    ? `配置 ${n}個${stones ? `（石${stones}個・合計${fmtWeight(t)}）` : ''} — この端末に自動保存されています`
+    : '配置はまだありません（設置すると自動保存されます）';
+  refreshPlansUI();
+}
+
+document.getElementById('layout-export-btn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(serializeLayout(), null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  a.download = `sekitei-layout-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+const layoutInput = document.getElementById('layout-input');
+document.getElementById('layout-import-btn').addEventListener('click', () => layoutInput.click());
+layoutInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  layoutInput.value = '';
+  if(!file) return;
+  try{
+    const data = JSON.parse(await file.text());
+    if(data.app !== 'sekitei' || !Array.isArray(data.items)) throw new Error('形式が違います');
+    if(placedGroup.children.length) pushUndo();
+    if(Array.isArray(data.ground)) setGroundPts(data.ground, { snap: false });   // 地面の記録も一緒に復元
+    const missing = applyLayout(data);
+    if(!Array.isArray(data.ground) && groundPts.length) snapAllToTerrain();   // 平らな床で作った配置はこの現場の地表に合わせる
+    layoutReady = true;
+    saveLayoutNow();
+    refreshPreview();
+    if(missing) alert(`${missing}個のモデルがライブラリに無いため復元できませんでした。\n先に該当のGLBを読み込んでから、もう一度読み込んでください。`);
+  }catch(err){
+    alert(`レイアウトの読み込みに失敗しました。\n(${err.message || err})`);
+  }
+});
+
+/* 保留中のデバウンス保存だけをフラッシュ(無条件に保存すると別タブの内容を上書きしうる) */
+addEventListener('visibilitychange', () => { if(document.hidden && saveTimer) saveLayoutNow(); });
+
+/* ---------- コントローラー ---------- */
 
 const raycaster = new THREE.Raycaster();
 const tmpMat = new THREE.Matrix4();
@@ -725,6 +1921,11 @@ let activeController = null;
 const boxHelper = new THREE.BoxHelper(undefined, 0x5F7052);
 boxHelper.visible = false;
 scene.add(boxHelper);
+/* 選択中(最後に置いた・つかんだ物)の枠。操作バーの対象 */
+let selectedObj = null;
+const selHelper = new THREE.BoxHelper(undefined, 0xEAE7DC);
+selHelper.visible = false;
+scene.add(selHelper);
 
 const reticle = makeReticle();
 reticle.visible = false;
@@ -732,7 +1933,8 @@ scene.add(reticle);
 
 function makeReticle(){
   const g = new THREE.Group();
-  const mat = (op) => new THREE.MeshBasicMaterial({ color:0x5F7052, transparent:true, opacity:op, side:THREE.DoubleSide });
+  // 照準は現実の床と同じ深さにあるため、遮蔽で欠けないよう深度テストを外して常に表示する
+  const mat = (op) => new THREE.MeshBasicMaterial({ color:0x5F7052, transparent:true, opacity:op, side:THREE.DoubleSide, depthTest:false });
   [[0.055,0.07,0.85],[0.12,0.13,0.55],[0.19,0.198,0.3]].forEach(([a,b,o]) => {
     const r = new THREE.Mesh(new THREE.RingGeometry(a,b,48), mat(o));
     r.rotation.x = -Math.PI/2;
@@ -785,6 +1987,12 @@ function setupHitTest(){
 
 /* コントローラーcのレイが床と交わる点(ヒットテスト優先・平面フォールバック) */
 function floorPointFor(c, frame){
+  // 地面を記録してあれば、その地形の面を最優先(屋外の起伏に追従)
+  if(terrainMesh){
+    setRayFrom(c);
+    const hit = raycaster.intersectObject(terrainMesh, false)[0];
+    if(hit) return hit.point.clone();
+  }
   const src = c.userData.inputSource;
   const refSpace = renderer.xr.getReferenceSpace();
   if(src && frame){
@@ -818,13 +2026,555 @@ function objectUnderRay(c){
   return o.parent === placedGroup ? o : null;
 }
 
+/* ---------- 複数案(A案・B案…) ----------
+   配置は「選択中の案」として保存する。旧形式(LS_LAYOUT のみ)は A案として取り込む */
+const LS_PLANS = 'sekitei.plans.v1';
+const PLAN_IDS = ['A', 'B', 'C', 'D', 'E'];
+let plans = null;   // { active, list: [{ id, name, items }] }
+let ghostPlanId = null;
+const ghostGroup = new THREE.Group();   // 比較用に重ねる別案(半透明・選択不可)
+anchorRoot.add(ghostGroup);
+
+function loadPlans(){
+  try{ plans = JSON.parse(localStorage.getItem(LS_PLANS) || 'null'); }catch(err){ plans = null; }
+  if(!plans || !Array.isArray(plans.list) || !plans.list.length){
+    let items = [];
+    try{ items = (JSON.parse(localStorage.getItem(LS_LAYOUT) || '{}').items) || []; }catch(err){}
+    plans = { active: 'A', list: [{ id: 'A', name: 'A案', items }] };
+    savePlans();
+  }
+  if(!plans.list.some(p => p.id === plans.active)) plans.active = plans.list[0].id;
+}
+function savePlans(){ try{ localStorage.setItem(LS_PLANS, JSON.stringify(plans)); }catch(err){ console.warn('案の保存に失敗:', err); } }
+function currentPlan(){ return plans.list.find(p => p.id === plans.active); }
+
+function switchPlan(id, { quiet = false } = {}){
+  if(!plans || id === plans.active) return;
+  const target = plans.list.find(p => p.id === id);
+  if(!target) return;
+  saveLayoutNow();                     // 今の案を確定してから切り替える
+  const prev = plans.active;
+  plans.active = id;
+  applyLayout({ items: target.items });
+  hovered = null; grabbed = null;
+  undoStack.length = 0;                // 案をまたいだ「戻す」はしない
+  if(ghostPlanId !== null) ghostPlanId = prev;   // 重ね表示中は「直前の案」を重ねる
+  savePlans();
+  rebuildGhost();
+  refreshPlansUI();
+  updateLayoutStatus();
+  if(!quiet) toast(`${target.name}（${target.items.length}個）に切り替えました`);
+}
+function newPlan({ copy }){
+  if(plans.list.length >= PLAN_IDS.length){ alert(`案は${PLAN_IDS.length}つまでです`); return; }
+  saveLayoutNow();
+  const id = PLAN_IDS.find(x => !plans.list.some(p => p.id === x));
+  const src = currentPlan();
+  plans.list.push({ id, name: `${id}案`, items: copy ? JSON.parse(JSON.stringify(src.items)) : [] });
+  savePlans();
+  switchPlan(id, { quiet: true });
+  toast(copy ? `${src.name}を複製して${id}案を作りました` : `${id}案（空）を作りました`);
+}
+function deletePlan(){
+  if(plans.list.length <= 1){ alert('最後の案は削除できません'); return; }
+  const cur = currentPlan();
+  if(!confirm(`${cur.name}（${cur.items.length}個）を削除しますか？`)) return;
+  plans.list = plans.list.filter(p => p !== cur);
+  const next = plans.list[0];
+  plans.active = next.id;
+  applyLayout({ items: next.items });
+  undoStack.length = 0;
+  if(ghostPlanId === cur.id || ghostPlanId === next.id) ghostPlanId = null;
+  savePlans(); rebuildGhost(); refreshPlansUI(); updateLayoutStatus();
+}
+function renamePlan(){
+  const cur = currentPlan();
+  const name = prompt('案の名前', cur.name);
+  if(name && name.trim()){ cur.name = name.trim().slice(0, 20); savePlans(); refreshPlansUI(); }
+}
+
+/* 別案を半透明で重ねる(比較用)。材質は複製済みなので安全に透明化できる */
+function rebuildGhost(){
+  for(const o of [...ghostGroup.children]){
+    ghostGroup.remove(o);
+    o.traverse(c => { if(c.isMesh) (Array.isArray(c.material) ? c.material : [c.material]).forEach(mt => mt.dispose()); });
+  }
+  const plan = ghostPlanId && plans ? plans.list.find(p => p.id === ghostPlanId) : null;
+  if(!plan || plan.id === plans.active) return;
+  for(const item of plan.items){
+    const m = models.find(x => x.id === item.id) || models.find(x => x.name === item.name);
+    if(!m) continue;
+    const g = makeInstance(m);
+    g.userData.sink = Number(item.sink) || 0;
+    g.position.fromArray(item.pos);
+    g.rotation.y = item.rotY || 0;
+    g.scale.setScalar(item.scale || 1);
+    applyGrowth(g);
+    g.traverse(c => {
+      if(!c.isMesh) return;
+      c.castShadow = false;
+      for(const mt of (Array.isArray(c.material) ? c.material : [c.material])){
+        mt.transparent = true; mt.opacity = 0.35; mt.depthWrite = false;
+      }
+    });
+    ghostGroup.add(g);
+  }
+}
+function toggleGhost(){
+  if(ghostPlanId){ ghostPlanId = null; rebuildGhost(); refreshPlansUI(); toast('重ね表示を終了しました'); return; }
+  const other = plans.list.find(p => p.id !== plans.active);
+  if(!other){ toast('比較する別の案がありません（「複製して新しい案」で作れます）'); return; }
+  ghostPlanId = other.id;
+  rebuildGhost(); refreshPlansUI();
+  toast(`${other.name}を半透明で重ねています`);
+}
+
+function refreshPlansUI(){
+  if(!plans) return;
+  const cur = currentPlan();
+  const tabs = document.getElementById('plan-tabs');
+  tabs.innerHTML = '';
+  const xrList = document.getElementById('xr-plan-list');
+  xrList.innerHTML = '';
+  for(const p of plans.list){
+    for(const [parent, label] of [[tabs, `${p.name}（${p.items.length}）`], [xrList, p.name]]){
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.className = p.id === plans.active ? (parent === tabs ? 'active' : 'on') : '';
+      b.addEventListener('click', () => switchPlan(p.id));
+      parent.appendChild(b);
+    }
+  }
+  document.getElementById('menu-plan').textContent = `📋 案の切替・比較（いま: ${cur.name}）`;
+  const ghost = ghostPlanId ? plans.list.find(p => p.id === ghostPlanId) : null;
+  document.getElementById('xr-plan-info').textContent =
+    `表示中: ${cur.name}（${cur.items.length}個）` + (ghost ? `\n半透明: ${ghost.name}（比較用・選択不可）` : '');
+  document.querySelector('#xr-plan-panel [data-p="ghost"]').classList.toggle('on', !!ghost);
+  document.getElementById('plan-del-btn').disabled = plans.list.length <= 1;
+  document.getElementById('plan-dup-btn').disabled = document.getElementById('plan-new-btn').disabled = plans.list.length >= PLAN_IDS.length;
+}
+
+document.getElementById('plan-dup-btn').addEventListener('click', () => newPlan({ copy: true }));
+document.getElementById('plan-new-btn').addEventListener('click', () => newPlan({ copy: false }));
+document.getElementById('plan-rename-btn').addEventListener('click', renamePlan);
+document.getElementById('plan-del-btn').addEventListener('click', deletePlan);
+
+/* ---------- 配置図(上から見た図)と3D画像の出力 ---------- */
+
+/* モデルを真上から見た輪郭(凸包)。頂点が多いスキャンは間引いて計算し、結果を覚えておく */
+function modelHull(m){
+  if(m.hull) return m.hull;
+  m.template.updateMatrixWorld(true);
+  const inv = m.template.matrixWorld.clone().invert();
+  const mm = new THREE.Matrix4(), v = new THREE.Vector3();
+  const pts = [];
+  m.template.traverse(o => {
+    if(!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    mm.multiplyMatrices(inv, o.matrixWorld);
+    const pos = o.geometry.attributes.position;
+    const stride = Math.max(1, Math.ceil(pos.count / 4000));
+    for(let i=0; i<pos.count; i+=stride){ v.fromBufferAttribute(pos, i).applyMatrix4(mm); pts.push([v.x, v.z]); }
+  });
+  pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const lower = [], upper = [];
+  for(const p of pts){ while(lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop(); lower.push(p); }
+  for(let i=pts.length-1; i>=0; i--){ const p = pts[i]; while(upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop(); upper.push(p); }
+  m.hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+  return m.hull;
+}
+
+function downloadCanvas(canvas, filename){
+  canvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/png');
+}
+function dateStamp(){
+  const d = new Date(), pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+}
+
+function renderPlanImage(){
+  saveLayoutNow();
+  const plan = plans ? currentPlan() : { name: '配置', items: serializeLayout().items };
+  const W = 2400, H = 1600, MAPW = 1560, PAD = 90;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const FONT = '"Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", sans-serif';
+  g.fillStyle = '#FBFAF6'; g.fillRect(0, 0, W, H);
+
+  // 北を上にする座標変換(北が未設定ならアンカーの -Z を北とみなす)
+  const N = northVec ? new THREE.Vector2(northVec[0], northVec[1]).normalize() : new THREE.Vector2(0, -1);
+  const E = new THREE.Vector2(-N.y, N.x);
+  const toUV = (x, z) => [x * E.x + z * E.y, x * N.x + z * N.y];
+
+  // 各設置物の輪郭をワールド(アンカー)座標で求める
+  const rows = [];
+  plan.items.forEach((it, i) => {
+    const m = models.find(x => x.id === it.id) || models.find(x => x.name === it.name);
+    if(!m) return;
+    const s = it.scale || 1, cr = Math.cos(it.rotY || 0), sr = Math.sin(it.rotY || 0);
+    const outline = modelHull(m).map(([x, z]) => {
+      const X = x * s, Z = z * s;   // Y軸回転: x' = x cosθ + z sinθ, z' = -x sinθ + z cosθ
+      return toUV(it.pos[0] + X * cr + Z * sr, it.pos[2] - X * sr + Z * cr);
+    });
+    const sink = Number(it.sink) || 0;
+    rows.push({ no: rows.length + 1, m, it, outline, center: toUV(it.pos[0], it.pos[2]), s, sink,
+                groundY: groundPts.length ? terrainHeight(it.pos[0], it.pos[2]) : it.pos[1] + sink, weight: modelWeight(m, s) });
+  });
+
+  // 表示範囲と縮尺(1mグリッドが見やすい大きさに収める)
+  let minU = -2, maxU = 2, minV = -2, maxV = 2;
+  for(const r of rows) for(const [u, v] of r.outline){ minU = Math.min(minU, u); maxU = Math.max(maxU, u); minV = Math.min(minV, v); maxV = Math.max(maxV, v); }
+  for(const [x, , z] of groundPts){ const [u, v] = toUV(x, z); minU = Math.min(minU, u); maxU = Math.max(maxU, u); minV = Math.min(minV, v); maxV = Math.max(maxV, v); }
+  minU -= 0.5; maxU += 0.5; minV -= 0.5; maxV += 0.5;
+  const top = 170, mapH = H - top - PAD;
+  const scale = Math.min((MAPW - PAD * 2) / (maxU - minU), mapH / (maxV - minV));
+  const ox = PAD + ((MAPW - PAD * 2) - (maxU - minU) * scale) / 2 - minU * scale;
+  const oy = top + (mapH - (maxV - minV) * scale) / 2 + maxV * scale;
+  const X = (u) => ox + u * scale, Y = (v) => oy - v * scale;
+
+  // 見出し
+  g.fillStyle = '#23271F';
+  g.font = `700 46px ${FONT}`;
+  g.fillText(`配置図 — ${plan.name}`, PAD, 88);
+  g.font = `400 24px ${FONT}`;
+  g.fillStyle = '#4A4F44';
+  const today = new Date();
+  g.fillText(`${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日　石庭 造園MRシミュレーター　（寸法・重量は目安）`, PAD, 130);
+
+  // 1mグリッド
+  g.strokeStyle = 'rgba(95,112,82,.18)'; g.lineWidth = 1;
+  for(let u = Math.ceil(minU); u <= maxU; u++){ g.beginPath(); g.moveTo(X(u), Y(minV)); g.lineTo(X(u), Y(maxV)); g.stroke(); }
+  for(let v = Math.ceil(minV); v <= maxV; v++){ g.beginPath(); g.moveTo(X(minU), Y(v)); g.lineTo(X(maxU), Y(v)); g.stroke(); }
+  g.strokeStyle = '#C9C5B4'; g.lineWidth = 2;
+  g.strokeRect(X(minU), Y(maxV), (maxU - minU) * scale, (maxV - minV) * scale);
+
+  // 地面の記録点(最も低い点を GL±0 として高さを表示)
+  const baseY = groundPts.length ? Math.min(...groundPts.map(p => p[1])) : 0;
+  const fmtGL = (y) => { const cm = Math.round((y - baseY) * 100); return cm === 0 ? 'GL±0' : `GL${cm > 0 ? '+' : '−'}${Math.abs(cm)}cm`; };
+  g.font = `400 20px ${FONT}`;
+  for(const [x, y, z] of groundPts){
+    const [u, v] = toUV(x, z);
+    g.fillStyle = '#C0503C';
+    g.beginPath(); g.arc(X(u), Y(v), 6, 0, Math.PI * 2); g.fill();
+    g.fillText(fmtGL(y), X(u) + 10, Y(v) - 8);
+  }
+
+  // 設置物: 樹木は緑、石は灰、その他は茶
+  for(const r of rows){
+    const fill = r.m.plant ? 'rgba(95,130,70,.35)' : r.m.density ? 'rgba(120,122,112,.75)' : 'rgba(150,120,85,.45)';
+    const stroke = r.m.plant ? '#46543C' : r.m.density ? '#3B3D36' : '#6B4F36';
+    g.beginPath();
+    r.outline.forEach(([u, v], i) => i ? g.lineTo(X(u), Y(v)) : g.moveTo(X(u), Y(v)));
+    g.closePath();
+    g.fillStyle = fill; g.fill();
+    g.strokeStyle = stroke; g.lineWidth = 2.5; g.stroke();
+  }
+  for(const r of rows){   // 番号は輪郭の上に重ねて描く
+    const [u, v] = r.center;
+    g.fillStyle = '#23271F';
+    g.beginPath(); g.arc(X(u), Y(v), 20, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#FBFAF6';
+    g.font = `700 22px ${FONT}`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(r.no), X(u), Y(v) + 1);
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  }
+
+  // 方位記号
+  const nx = MAPW - PAD - 40, ny = top + 70;
+  g.fillStyle = '#23271F';
+  g.beginPath(); g.moveTo(nx, ny - 46); g.lineTo(nx + 18, ny + 16); g.lineTo(nx, ny + 4); g.lineTo(nx - 18, ny + 16); g.closePath(); g.fill();
+  g.font = `700 26px ${FONT}`; g.textAlign = 'center';
+  g.fillText('N', nx, ny + 50);
+  if(!northVec){ g.font = `400 16px ${FONT}`; g.fillStyle = '#8A4A2E'; g.fillText('北は未設定（仮）', nx, ny + 76); }
+  g.textAlign = 'left';
+
+  // スケールバー
+  const bar = scale >= 120 ? 1 : scale >= 50 ? 2 : 5;
+  const bx = PAD, by = H - PAD + 40;
+  g.fillStyle = '#23271F';
+  g.fillRect(bx, by, bar * scale, 8);
+  g.fillStyle = '#FBFAF6'; g.fillRect(bx + bar * scale / 2, by + 2, bar * scale / 2 - 2, 4);
+  g.fillStyle = '#23271F'; g.font = `400 20px ${FONT}`;
+  g.fillText('0', bx - 4, by - 8); g.fillText(`${bar}m`, bx + bar * scale - 14, by - 8);
+  g.fillText('グリッド 1m', bx + bar * scale + 30, by + 8);
+
+  // 一覧表
+  const tx = MAPW + 20;
+  g.font = `700 28px ${FONT}`;
+  g.fillText('一覧', tx, top + 20);
+  const cols = [['No', 0], ['名称', 50], ['寸法 幅×奥×高', 260], ['根入れ', 500], ['推定重量', 585], ['地盤高', 690]];
+  g.font = `700 19px ${FONT}`; g.fillStyle = '#4A4F44';
+  cols.forEach(([t, x]) => g.fillText(t, tx + x, top + 62));
+  g.strokeStyle = '#C9C5B4'; g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(tx, top + 74); g.lineTo(W - 40, top + 74); g.stroke();
+  const rowH = Math.min(40, (H - top - 230) / Math.max(1, rows.length));
+  g.font = `400 ${Math.min(19, rowH - 12)}px ${FONT}`;
+  let total = 0, stones = 0;
+  rows.forEach((r, i) => {
+    const y = top + 104 + i * rowH;
+    const sz = r.m.size;
+    const dims = `${fmtLen(sz.x * r.s)}×${fmtLen(sz.z * r.s)}×${fmtLen(sz.y * r.s)}`;
+    g.fillStyle = '#23271F';
+    g.fillText(String(r.no), tx, y);
+    let name = r.m.name;
+    while(g.measureText(name).width > 200 && name.length > 2) name = name.slice(0, -2) + '…';
+    g.fillText(name, tx + 50, y);
+    g.fillText(dims, tx + 260, y);
+    g.fillText(r.sink > 0.005 ? fmtLen(r.sink) : '—', tx + 500, y);
+    g.fillText(r.weight != null ? fmtWeight(r.weight) : '—', tx + 585, y);
+    g.fillText(groundPts.length ? fmtGL(r.groundY) : '—', tx + 690, y);
+    if(r.weight != null){ total += r.weight; stones++; }
+  });
+  const fy = top + 104 + rows.length * rowH + 16;
+  g.beginPath(); g.moveTo(tx, fy - 24); g.lineTo(W - 40, fy - 24); g.stroke();
+  g.font = `700 21px ${FONT}`;
+  g.fillText(stones ? `石 ${stones}個　合計 ${fmtWeight(total)}（目安・根入れ部分を含む）` : '石の重量: なし', tx, fy + 4);
+  if(!rows.length){ g.font = `400 24px ${FONT}`; g.fillText('配置がありません', PAD + 40, top + 80); }
+  return c;
+}
+
+document.getElementById('plan-image-btn').addEventListener('click', () => {
+  // ファイル名に日本語を含めると Chromium 系で "download" に置き換わることがあるため英数字のみ
+  downloadCanvas(renderPlanImage(), `sekitei-plan-${plans ? plans.active : 'A'}-${dateStamp()}.png`);
+});
+/* 3Dプレビュー(PC表示)をそのまま画像に。描画直後に読み出すことで保存用バッファなしで取得できる */
+document.getElementById('view-image-btn').addEventListener('click', () => {
+  const hadPreview = previewObj && previewObj.visible;
+  if(previewObj) previewObj.visible = false;   // 選択中モデルの回転プレビューは写さない
+  renderer.render(scene, camera);
+  if(previewObj) previewObj.visible = hadPreview;
+  downloadCanvas(renderer.domElement, `sekitei-3d-${plans ? plans.active : 'A'}-${dateStamp()}.png`);
+});
+
+/* ---------- アンドゥ ---------- */
+const undoStack = [];
+function pushUndo(){
+  undoStack.push(JSON.stringify(serializeLayout().items));
+  if(undoStack.length > 30) undoStack.shift();
+}
+function undo(){
+  if(!undoStack.length){ toast('戻せる操作はありません'); return; }
+  applyLayout({ items: JSON.parse(undoStack.pop()) });
+  hovered = null; grabbed = null;
+  scheduleSave();
+  toast('元に戻しました');
+}
+
+/* ---------- 距離計測 ---------- */
+let measureMode = false;
+const measurePts = [];
+const measureGroup = new THREE.Group();
+scene.add(measureGroup);
+
+function fmtDist(d){ return d >= 1 ? d.toFixed(2) + ' m' : Math.round(d * 100) + ' cm'; }
+
+function makeTextSprite(text){
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(35,39,31,.85)';
+  g.beginPath(); g.roundRect(4, 4, 248, 88, 44); g.fill();
+  g.fillStyle = '#EAE7DC';
+  g.font = '700 44px sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, 128, 50);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
+  sp.scale.set(0.32, 0.12, 1);
+  return sp;
+}
+
+function updateMeasureVisuals(){
+  measureGroup.clear();
+  const mat = new THREE.MeshBasicMaterial({ color: 0xC0503C });
+  measurePts.forEach(p => {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 8), mat);
+    s.position.copy(p);
+    measureGroup.add(s);
+  });
+  if(measurePts.length === 2){
+    const [a, b] = measurePts;
+    measureGroup.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([a, b]),
+      new THREE.LineBasicMaterial({ color: 0xC0503C })
+    ));
+    const label = makeTextSprite(fmtDist(a.distanceTo(b)));
+    label.position.copy(a).add(b).multiplyScalar(0.5);
+    label.position.y += 0.08;
+    measureGroup.add(label);
+    toast(`距離: ${fmtDist(a.distanceTo(b))}`);
+  }
+}
+
+/* 計測点: 設置物の表面を優先、なければ床 */
+function addMeasurePoint(c){
+  setRayFrom(c);
+  const hits = raycaster.intersectObjects(placedGroup.children, true);
+  const pt = hits.length ? hits[0].point.clone()
+           : (c.userData.lastFloorPoint ? c.userData.lastFloorPoint.clone() : null);
+  if(!pt){ toast('床か設置物に向けてください'); return; }
+  if(measurePts.length >= 2) measurePts.length = 0;
+  measurePts.push(pt);
+  updateMeasureVisuals();
+  if(measurePts.length === 1) toast('1点目を記録 — 2点目を指定');
+}
+
+/* ---------- 複製 ---------- */
+function duplicateTarget(t = grabbed || hovered || selectedObj){
+  if(!t){ toast('複製する物に向けてA/Xを押してください'); return; }
+  pushUndo();
+  const clone = prepareInstance(t.clone(true));   // 材質とクリップ平面は複製先専用にする
+  clone.position.x += 0.4;
+  placedGroup.add(clone);
+  setSelected(clone);
+  updateCount();
+  scheduleSave();
+  toast(`${t.userData.modelName || ''} を複製しました`);
+}
+
+/* ---------- コントローラーのボタン ----------
+   Quest では画面上のボタン(dom-overlay)が使えないため、主な操作をボタンに割り当てる。
+   右A/B=素材の次/前・右スティック押し込み=根入れ⇔拡縮
+   左X=タップで複製/長押しで全削除・左Y=タップで元に戻す/長押しでMR終了 */
+const HOLD_MS = 1200;
+const btnState = new Map();   // XRInputSource -> 押下状態
+function pollButtons(){
+  if(!xrSession) return;
+  const now = performance.now();
+  for(const src of xrSession.inputSources){
+    const gp = src.gamepad;
+    if(!gp || !gp.buttons || gp.buttons.length < 6) continue;
+    let st = btnState.get(src);
+    if(!st){ st = { b3:false, b4:false, b5:false, hold4:0, hold5:0, fired4:false, fired5:false }; btnState.set(src, st); }
+    const b3 = !!(gp.buttons[3] && gp.buttons[3].pressed);   // スティック押し込み
+    const b4 = !!(gp.buttons[4] && gp.buttons[4].pressed);   // A / X
+    const b5 = !!(gp.buttons[5] && gp.buttons[5].pressed);   // B / Y
+    if(src.handedness === 'left'){
+      if(b4 && !st.b4){ st.hold4 = now; st.fired4 = false; }
+      if(b4 && !st.fired4 && now - st.hold4 > HOLD_MS){ st.fired4 = true; clearAllPlaced(); }
+      if(!b4 && st.b4 && !st.fired4) duplicateTarget();
+      if(b5 && !st.b5){ st.hold5 = now; st.fired5 = false; }
+      if(b5 && !st.fired5 && now - st.hold5 > HOLD_MS){ st.fired5 = true; xrSession.end(); return; }
+      if(!b5 && st.b5 && !st.fired5) undo();
+    }else{
+      if(b4 && !st.b4) cycleModel(1);
+      if(b5 && !st.b5) cycleModel(-1);
+      if(b3 && !st.b3) toggleStickMode();
+    }
+    st.b3 = b3; st.b4 = b4; st.b5 = b5;
+  }
+}
+
+/* ---------- XR内HUD(dom-overlay 非対応ブラウザ = Meta Quest 用) ----------
+   視線の少し下に追従する板に、選択中の素材・指している物の情報・操作方法・通知を描く */
+let hudActive = false, hudSnap = false, hudDirty = true;
+let hudToastMsg = '', hudToastUntil = 0;
+const hud = makeHUD();
+hud.visible = false;
+scene.add(hud);
+const hudCamPos = new THREE.Vector3(), hudFwd = new THREE.Vector3(), hudTarget = new THREE.Vector3();
+
+function makeHUD(){
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 420;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.56, 0.56 * canvas.height / canvas.width),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false })
+  );
+  mesh.renderOrder = 999;
+  mesh.userData.canvas = canvas;
+  mesh.userData.tex = tex;
+  return mesh;
+}
+function roundRectPath(g, x, y, w, h, r){
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+function fitText(g, text, maxW){
+  let t = text;
+  while(g.measureText(t).width > maxW && t.length > 2) t = t.slice(0, -2) + '…';
+  return t;
+}
+function drawHUD(){
+  const canvas = hud.userData.canvas;
+  const g = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height, F = '"Zen Kaku Gothic New", sans-serif';
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = 'rgba(35,39,31,0.82)';
+  roundRectPath(g, 0, 0, W, H - 80, 40); g.fill();
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+
+  const m = models[activeIndex];
+  const w = modelWeight(m);
+  g.fillStyle = '#EAE7DC';
+  g.font = `bold 52px ${F}`;
+  g.fillText(fitText(g, `◀B　${m ? m.name : '—'}　A▶`, W - 60), W/2, 74);
+  const { n, t, stones } = placedTotals();
+  g.font = `30px ${F}`;
+  g.fillStyle = 'rgba(234,231,220,0.85)';
+  g.fillText(fitText(g, `${m ? fmtDims(m.size) : '—'}${w != null ? '・' + fmtWeight(w) : ''}　／　設置${n}個${stones ? `・石${fmtWeight(t)}` : ''}${plans ? '・' + currentPlan().name : ''}`, W - 60), W/2, 126);
+  // 指している物の情報(寸法・根入れ・重量など)
+  g.font = `bold 32px ${F}`;
+  g.fillStyle = lastTargetText ? '#C9D8B8' : 'rgba(234,231,220,0.45)';
+  g.fillText(fitText(g, lastTargetText || '物に向けると寸法・根入れ・重量を表示', W - 60), W/2, 180);
+  g.font = `25px ${F}`;
+  g.fillStyle = 'rgba(234,231,220,0.66)';
+  g.fillText(`トリガー＝設置／つかむ　グリップ＝削除　スティック左右＝回転・上下＝${scaleLocked ? '根入れ' : '大きさ'}`, W/2, 232);
+  g.fillText('右A/B＝素材切替　右スティック押込＝根入れ⇔大きさ', W/2, 272);
+  g.fillText(`左X＝複製（長押し：全削除）　左Y＝戻す（長押し：終了）`, W/2, 312);
+
+  if(hudToastMsg && performance.now() < hudToastUntil){
+    g.font = `bold 32px ${F}`;
+    const tw = Math.min(W - 40, g.measureText(hudToastMsg).width + 70);
+    g.fillStyle = 'rgba(95,112,82,0.95)';
+    roundRectPath(g, (W - tw) / 2, H - 66, tw, 58, 29); g.fill();
+    g.fillStyle = '#EAE7DC';
+    g.fillText(fitText(g, hudToastMsg, tw - 40), W/2, H - 26);
+  }
+  hud.userData.tex.needsUpdate = true;
+}
+function updateHUD(){
+  if(!hudActive) return;
+  if(hudToastMsg && performance.now() > hudToastUntil){ hudToastMsg = ''; hudDirty = true; }
+  if(hudDirty){ drawHUD(); hudDirty = false; }
+  const cam = renderer.xr.getCamera();
+  hudCamPos.setFromMatrixPosition(cam.matrixWorld);
+  hudFwd.set(0, 0, -1).transformDirection(cam.matrixWorld);
+  hudTarget.copy(hudCamPos).addScaledVector(hudFwd, 1.15);
+  hudTarget.y -= 0.22;
+  if(hudSnap){ hud.position.copy(hudTarget); hudSnap = false; }
+  else hud.position.lerp(hudTarget, 0.08);
+  hud.lookAt(hudCamPos);
+}
+
 /* ---------- 操作 ---------- */
 function onSelectStart(c){
   if(!renderer.xr.isPresenting) return;
   activeController = c;
+  if(northMode){ northMode = false; updateModeChip(); c.userData.placeOnRelease = false; setNorthFrom(c); return; }
+  if(groundMode){ c.userData.placeOnRelease = false; recordGroundPoint(c); return; }
+  if(measureMode){ addMeasurePoint(c); return; }
   const obj = objectUnderRay(c);
   if(obj){
+    pushUndo();
     grabbed = obj;
+    setSelected(obj);
     toast('移動中… 離すと確定');
   }else{
     c.userData.placeOnRelease = true;
@@ -833,8 +2583,11 @@ function onSelectStart(c){
 
 function onSelectEnd(c){
   if(!renderer.xr.isPresenting) return;
+  if(groundMode) return;
+  if(measureMode){ c.userData.placeOnRelease = false; return; }
   if(grabbed && activeController === c){
     grabbed = null;
+    scheduleSave();
     toast('設置しました');
     return;
   }
@@ -843,12 +2596,16 @@ function onSelectEnd(c){
     const m = models[activeIndex];
     const p = c.userData.lastFloorPoint;
     if(m && p){
-      const inst = m.template.clone(true);
-      inst.position.copy(p);
-      const cam = renderer.xr.getCamera();
-      inst.rotation.y = Math.atan2(cam.position.x - p.x, cam.position.z - p.z);
+      pushUndo();
+      const inst = makeInstance(m);
+      applyGrowth(inst);
       placedGroup.add(inst);
+      setSelected(inst);
+      inst.position.copy(worldToPlaced(p));
+      const cam = renderer.xr.getCamera();
+      inst.rotation.y = Math.atan2(cam.position.x - p.x, cam.position.z - p.z) - anchorYaw();
       updateCount();
+      scheduleSave();
       toast(`${m.name} を設置（${placedGroup.children.length}個目）`);
     }
   }
@@ -858,28 +2615,77 @@ function onSqueeze(c){
   if(!renderer.xr.isPresenting) return;
   const obj = objectUnderRay(c);
   if(obj){
+    pushUndo();
     if(grabbed === obj) grabbed = null;
     if(hovered === obj) hovered = null;
-    placedGroup.remove(obj);
+    removeInstance(obj);
     updateCount();
+    scheduleSave();
     toast('削除しました');
   }
 }
 
-/* スティック: 左右=回転 / 上下=スケール */
+/* スティック: 左右=回転 / 上下=根入れ(実寸ロック中・初期) または 大きさ(ロック解除中) */
+let scaleLocked = true;
+let lastStickChangeAt = 0;
+let sinkHoldUntil = 0;
+const SINK_SPEED = 0.15;   // m/秒(スティック全倒し)
+
+/* 根入れ深さを変更。地表(0)と1/3根入れを通過するときは一旦止める(造園の目安) */
+function adjustSink(target, y, dt){
+  const now = performance.now();
+  if(now < sinkHoldUntil) return false;
+  const h = (target.userData.baseSize ? target.userData.baseSize.y : 1) * target.scale.x;
+  const old = target.userData.sink || 0;
+  let next = THREE.MathUtils.clamp(old + y * SINK_SPEED * dt, -1.0, h * 0.95);
+  for(const [snap, label] of [[0, '地表（根入れなし）'], [h / 3, '根入れ 1/3']]){
+    if((old < snap && next >= snap) || (old > snap && next <= snap)){
+      next = snap;
+      sinkHoldUntil = now + 450;
+      toast(`${label} — 地上高 ${fmtLen(h - snap)}`);
+      break;
+    }
+  }
+  if(next === old) return false;
+  target.position.y -= next - old;
+  target.userData.sink = next;
+  return true;
+}
+
 function pollThumbsticks(dt){
   const target = grabbed || hovered;
   if(!target || !xrSession) return;
+  let changed = false;
+  const beforeChange = () => {   // 連続入力の先頭でだけアンドゥ点を積む
+    const now = performance.now();
+    if(now - lastStickChangeAt > 800) pushUndo();
+    lastStickChangeAt = now;
+  };
   for(const src of xrSession.inputSources){
     const gp = src.gamepad;
     if(!gp || gp.axes.length < 4) continue;
     const x = gp.axes[2], y = gp.axes[3];
-    if(Math.abs(x) > 0.18) target.rotation.y -= x * 1.8 * dt;
+    if(Math.abs(x) > 0.18){ beforeChange(); target.rotation.y -= x * 1.8 * dt; changed = true; }
     if(Math.abs(y) > 0.18){
-      const s = THREE.MathUtils.clamp(target.scale.x * (1 - y * 0.9 * dt), 0.2, 4.0);
-      target.scale.setScalar(s);
+      beforeChange();
+      if(scaleLocked){
+        // 上に倒す(y<0)=持ち上げる / 下に倒す=沈める
+        if(adjustSink(target, y, dt)) changed = true;
+      }else{
+        const s = THREE.MathUtils.clamp(target.scale.x * (1 - y * 0.9 * dt), 0.2, 4.0);
+        target.scale.setScalar(s);
+        applyGrowth(target);
+        // 根入れ深さは実寸(m)で保つ。石が小さくなって全部埋まらないよう上限だけ合わせる
+        const maxSink = (target.userData.baseSize ? target.userData.baseSize.y : 1) * s * 0.95;
+        if((target.userData.sink || 0) > maxSink){
+          target.position.y += target.userData.sink - maxSink;
+          target.userData.sink = maxSink;
+        }
+        changed = true;
+      }
     }
   }
+  if(changed) scheduleSave();
 }
 
 /* ---------- MR中オーバーレイ ---------- */
@@ -893,12 +2699,84 @@ function refreshXRLabel(){
   const m = models[activeIndex];
   xrModelEl.textContent = m ? m.name : '—';
   xrDimsEl.textContent  = m ? fmtDims(m.size) : '—';
+  document.getElementById('xr-model-thumb').src = (m && m.thumb) || '';
   hudDirty = true;
+}
+/* 設置物の個数と、石(重量が出せるもの)の合計重量 */
+function placedTotals(){
+  let t = 0, stones = 0;
+  for(const o of placedGroup.children){
+    const w = modelWeight(models.find(x => x.id === o.userData.modelId), o.scale.x);
+    if(w != null){ t += w; stones++; }
+  }
+  return { n: placedGroup.children.length, t, stones };
 }
 function updateCount(){
-  xrCountEl.textContent = placedGroup.children.length + '個';
+  const { n, t, stones } = placedTotals();
+  xrCountEl.textContent = n + '個' + (stones ? `・石${fmtWeight(t)}` : '');
   hudDirty = true;
 }
+
+/* スティック上下の役割切替: 根入れ(実寸ロック) / 拡縮 */
+const lockBtn = document.getElementById('xr-lock');
+function refreshLockBtn(){
+  lockBtn.textContent = scaleLocked ? '⬍根入れ' : '⤢拡縮';
+  lockBtn.classList.toggle('unlocked', !scaleLocked);
+}
+function toggleStickMode(){
+  scaleLocked = !scaleLocked;
+  refreshLockBtn();
+  refreshObjBar();
+  hudDirty = true;
+  toast(scaleLocked ? 'スティック上下＝根入れ（大きさは実寸で固定）' : 'スティック上下＝大きさ（実寸ロック解除）');
+}
+lockBtn.addEventListener('click', toggleStickMode);
+refreshLockBtn();
+
+/* 指している/つかんでいる物の実寸・倍率表示 */
+const xrTargetEl = document.getElementById('xr-target');
+let currentTarget = null;
+let lastTargetText = '';
+
+function updateTargetInfo(){
+  const target = grabbed || hovered || selectedObj;
+  currentTarget = target;
+  if(!target){
+    if(lastTargetText){ lastTargetText = ''; xrTargetEl.classList.remove('on'); hudDirty = true; }
+    return;
+  }
+  const base = target.userData.baseSize;
+  const s = target.scale.x;
+  const dims = base ? fmtDims({ x: base.x * s, y: base.y * s, z: base.z * s }) : '';
+  const h = base ? base.y * s : 0;
+  const sink = target.userData.sink || 0;
+  const sinkNote = sink > 0.005 ? `　根入れ${fmtLen(sink)}（${Math.round(sink / h * 100)}%）・地上高${fmtLen(h - sink)}`
+                 : sink < -0.005 ? `　${fmtLen(-sink)}浮かせ` : '';
+  const w = modelWeight(models.find(x => x.id === target.userData.modelId), s);
+  const weightNote = w != null ? `　${fmtWeight(w)}` : '';
+  const scaleNote = Math.abs(s - 1) > 0.005 ? `　×${s.toFixed(2)} — タップで実寸へ` : '';
+  const tm = models.find(x => x.id === target.userData.modelId);
+  const gf = growthFactor(tm, s);
+  const growNote = gf > 1.001 ? `　${fmtYears(sunState.years)}の目安 高${fmtLen(h * gf)}・幅${fmtLen(Math.max(base.x, base.z) * s * gf)}` : '';
+  const text = `${target.userData.modelName || ''}　${dims}${growNote}${sinkNote}${weightNote}${scaleNote}`;
+  if(text !== lastTargetText){
+    lastTargetText = text;
+    hudDirty = true;
+    xrTargetEl.textContent = text;
+    xrTargetEl.classList.add('on');
+  }
+}
+xrTargetEl.addEventListener('click', () => {
+  if(currentTarget && Math.abs(currentTarget.scale.x - 1) > 0.005){
+    pushUndo();
+    currentTarget.scale.setScalar(1);
+    applyGrowth(currentTarget);
+    scheduleSave();
+    toast('実寸（×1.00）に戻しました');
+  }
+});
+
+document.getElementById('xr-undo').addEventListener('click', undo);
 function toast(msg){
   toastEl.textContent = msg;
   toastEl.classList.add('show');
@@ -908,7 +2786,6 @@ function toast(msg){
   hudToastUntil = performance.now() + 1800;
   hudDirty = true;
 }
-
 function cycleModel(dir){
   if(!models.length) return;
   activeIndex = (activeIndex + dir + models.length) % models.length;
@@ -916,147 +2793,574 @@ function cycleModel(dir){
   toast(models[activeIndex].name);
 }
 function clearAllPlaced(){
-  placedGroup.clear();
+  if(placedGroup.children.length) pushUndo();
+  clearPlaced();
   hovered = null; grabbed = null;
   updateCount();
-  toast('すべて削除しました');
+  saveLayoutNow();
+  toast('すべて削除しました（「戻す」で元に戻せます）');
 }
-
-document.getElementById('xr-prev').addEventListener('click', () => cycleModel(-1));
-document.getElementById('xr-next').addEventListener('click', () => cycleModel(1));
-document.getElementById('xr-clear').addEventListener('click', clearAllPlaced);
 document.getElementById('xr-exit').addEventListener('click', () => {
   if(xrSession) xrSession.end();
 });
 
-/* ---------- XR内HUD（dom-overlay非対応ブラウザ = Meta Quest用） ---------- */
-let hudActive = false;
-let hudSnap = false;
-let hudDirty = true;
-let hudToastMsg = '';
-let hudToastUntil = 0;
+/* ---------- MR中のパネル(素材パレット・メニュー・各設定) ---------- */
+const paletteEl = document.getElementById('xr-palette');
+const menuPanel = document.getElementById('xr-menu-panel');
+const menuBtn = document.getElementById('xr-menu');
+const modelBtn = document.getElementById('xr-model-btn');
+const modeChip = document.getElementById('xr-mode-chip');
+const helpEl = document.getElementById('xr-help');
+const xrPanels = () => [paletteEl, menuPanel, sunPanel, groundPanel, planPanel];
 
-const hud = makeHUD();
-hud.visible = false;
-scene.add(hud);
-
-const hudCamPos = new THREE.Vector3();
-const hudFwd = new THREE.Vector3();
-const hudTarget = new THREE.Vector3();
-
-function makeHUD(){
-  const canvas = document.createElement('canvas');
-  canvas.width = 1024; canvas.height = 340;
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.52, 0.52 * canvas.height / canvas.width),
-    new THREE.MeshBasicMaterial({ map:tex, transparent:true, depthTest:false, depthWrite:false })
-  );
-  mesh.renderOrder = 999;
-  mesh.userData.canvas = canvas;
-  mesh.userData.tex = tex;
-  return mesh;
+function closeXRPanels(except){
+  for(const p of xrPanels()) if(p !== except) p.classList.remove('on');
+  menuBtn.classList.toggle('active-mode', [menuPanel, sunPanel, groundPanel, planPanel].some(p => p.classList.contains('on')));
+  modelBtn.classList.toggle('active-mode', paletteEl.classList.contains('on'));
+}
+function togglePanel(panel){
+  closeXRPanels(panel);
+  panel.classList.toggle('on');
+  closeXRPanels(panel);   // ボタンの強調表示を更新
+  if(panel === planPanel) refreshPlansUI();
+  if(panel === groundPanel) refreshGroundUI();
+  if(panel === paletteEl) refreshPalette();
 }
 
-function roundRectPath(g, x, y, w, h, r){
-  g.beginPath();
-  g.moveTo(x + r, y);
-  g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r);
-  g.closePath();
+/* いまのモード(計測・地面の記録・北合わせ)を上部に表示し、タップで抜けられるようにする */
+function updateModeChip(){
+  const label = northMode ? '🧭 北合わせ中 — 北に向けてトリガー'
+              : groundMode ? '⛰ 地面の記録中 — 先端を地面に当ててトリガー'
+              : measureMode ? '📐 計測中 — 2点をトリガーで指定' : '';
+  modeChip.textContent = label ? `${label}　✕` : '';
+  modeChip.classList.toggle('on', !!label);
 }
+function setMeasureMode(on){
+  measureMode = on;
+  if(on){ groundMode = false; northMode = false; }
+  measurePts.length = 0;
+  updateMeasureVisuals();
+  updateModeChip();
+  if(typeof refreshGroundUI === 'function') refreshGroundUI();
+}
+modeChip.addEventListener('click', () => {
+  northMode = false; groundMode = false;
+  setMeasureMode(false);
+  toast('モードを終了しました');
+});
 
-function drawHUD(){
-  const canvas = hud.userData.canvas;
-  const g = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  g.clearRect(0, 0, W, H);
-  g.fillStyle = 'rgba(35,39,31,0.82)';
-  roundRectPath(g, 0, 0, W, H, 40); g.fill();
+modelBtn.addEventListener('click', () => togglePanel(paletteEl));
+menuBtn.addEventListener('click', () => togglePanel(menuPanel));
 
-  const m = models[activeIndex];
-  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
-  g.fillStyle = '#EAE7DC';
-  g.font = 'bold 56px "Zen Kaku Gothic New", sans-serif';
-  g.fillText(`◀ B　 ${m ? m.name : '—'} 　A ▶`, W/2, 82);
-  g.font = '36px "Zen Kaku Gothic New", sans-serif';
-  g.fillStyle = 'rgba(234,231,220,0.82)';
-  g.fillText(`${m ? fmtDims(m.size) : '—'}　・　設置 ${placedGroup.children.length}個`, W/2, 142);
-  g.font = '29px "Zen Kaku Gothic New", sans-serif';
-  g.fillStyle = 'rgba(234,231,220,0.62)';
-  g.fillText('トリガー＝設置／つかむ　・　スティック＝回転・大きさ　・　グリップ＝削除', W/2, 200);
-  g.fillText('A/B＝モデル切替　・　X長押し＝全削除　・　Y＝終了', W/2, 244);
-
-  if(hudToastMsg && performance.now() < hudToastUntil){
-    g.fillStyle = 'rgba(95,112,82,0.95)';
-    roundRectPath(g, W/2 - 340, H - 72, 680, 58, 29); g.fill();
-    g.fillStyle = '#EAE7DC';
-    g.font = 'bold 34px "Zen Kaku Gothic New", sans-serif';
-    g.fillText(hudToastMsg, W/2, H - 30);
+/* 全削除は2回タップで確定(誤操作防止) */
+let clearArmedUntil = 0;
+menuPanel.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-m]');
+  if(!b) return;
+  const act = b.dataset.m;
+  if(act === 'measure'){
+    setMeasureMode(!measureMode);
+    closeXRPanels();
+    toast(measureMode ? '計測モード: 2点をトリガーで指定' : '計測モードを終了しました');
   }
-  hud.userData.tex.needsUpdate = true;
-}
-
-function updateHUD(){
-  if(!hudActive) return;
-  if(hudToastMsg && performance.now() > hudToastUntil){ hudToastMsg = ''; hudDirty = true; }
-  if(hudDirty){ drawHUD(); hudDirty = false; }
-  const cam = renderer.xr.getCamera();
-  hudCamPos.setFromMatrixPosition(cam.matrixWorld);
-  hudFwd.set(0, 0, -1).transformDirection(cam.matrixWorld);
-  hudTarget.copy(hudCamPos).addScaledVector(hudFwd, 1.15);
-  hudTarget.y -= 0.18;
-  if(hudSnap){ hud.position.copy(hudTarget); hudSnap = false; }
-  else hud.position.lerp(hudTarget, 0.08);
-  hud.lookAt(hudCamPos);
-}
-
-/* ---------- コントローラーのボタン（A/B=モデル切替, X長押し=全削除, Y=終了） ---------- */
-const btnState = new Map();   // XRInputSource -> {b4, b5, holdStart, holdFired}
-
-function pollButtons(){
-  if(!xrSession) return;
-  const now = performance.now();
-  for(const src of xrSession.inputSources){
-    const gp = src.gamepad;
-    if(!gp || !gp.buttons || gp.buttons.length < 6) continue;
-    let st = btnState.get(src);
-    if(!st){ st = { b4:false, b5:false, holdStart:0, holdFired:false }; btnState.set(src, st); }
-    const b4 = !!(gp.buttons[4] && gp.buttons[4].pressed);   // A / X
-    const b5 = !!(gp.buttons[5] && gp.buttons[5].pressed);   // B / Y
-    if(src.handedness === 'right'){
-      if(b4 && !st.b4) cycleModel(1);
-      if(b5 && !st.b5) cycleModel(-1);
-    }else if(src.handedness === 'left'){
-      if(b4 && !st.b4){ st.holdStart = now; st.holdFired = false; }
-      if(b4 && !st.holdFired && now - st.holdStart > 1200){
-        st.holdFired = true;
-        clearAllPlaced();
-      }
-      if(b5 && !st.b5 && xrSession) xrSession.end();
+  if(act === 'sun') togglePanel(sunPanel);
+  if(act === 'ground') togglePanel(groundPanel);
+  if(act === 'plan') togglePanel(planPanel);
+  if(act === 'help'){
+    helpEl.classList.toggle('hidden');
+    b.textContent = helpEl.classList.contains('hidden') ? '？ 操作ヘルプの表示' : '？ 操作ヘルプを隠す';
+  }
+  if(act === 'clear'){
+    const now = performance.now();
+    if(now > clearArmedUntil){
+      clearArmedUntil = now + 3000;
+      b.classList.add('confirm');
+      b.textContent = '🗑 もう一度タップで全削除';
+      setTimeout(() => { b.classList.remove('confirm'); b.textContent = '🗑 全削除'; }, 3000);
+      return;
     }
-    st.b4 = b4; st.b5 = b5;
+    clearArmedUntil = 0;
+    b.classList.remove('confirm'); b.textContent = '🗑 全削除';
+    closeXRPanels();
+    clearAllPlaced();
   }
+});
+
+/* サムネイル(素材パレット・ライブラリ用)。メインの描画を邪魔しないよう
+   別の小さな WebGL でまとめて生成し、終わったらその描画領域ごと破棄する */
+let thumbTimer = null, thumbsReady = false, thumbBusy = false;
+/* 起動時の復元(素材・配置)が終わるまでは作らない。1枚ずつ間を空けて作り、操作を止めない */
+function scheduleThumbs(){
+  if(!thumbsReady || thumbBusy) return;
+  clearTimeout(thumbTimer);
+  thumbTimer = setTimeout(generateThumbs, 300);
+}
+function generateThumbs(){
+  if(!models.some(m => !m.thumb)) return;
+  let r;
+  try{ r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); }
+  catch(err){ console.warn('サムネイルを作れませんでした:', err); return; }
+  thumbBusy = true;
+  r.setSize(128, 128, false);
+  r.setClearColor(0x000000, 0);
+  r.toneMapping = THREE.ACESFilmicToneMapping;
+  const sc = new THREE.Scene();
+  sc.environment = makeOutdoorEnvironment(r);
+  sc.add(new THREE.HemisphereLight(0xffffff, 0x8a8a7a, 0.5));
+  const dl = new THREE.DirectionalLight(0xfff6e8, 2.0);
+  dl.position.set(2, 4, 3);
+  sc.add(dl);
+  const cam = new THREE.PerspectiveCamera(30, 1, 0.01, 200);
+  const view = new THREE.Vector3(0.9, 0.75, 1.2).normalize();
+  const step = () => {
+    const m = models.find(x => !x.thumb);
+    if(!m){
+      sc.environment.dispose();
+      r.dispose();
+      r.forceContextLoss();
+      thumbBusy = false;
+      refreshLibraryUI(); refreshXRLabel();
+      if(paletteEl.classList.contains('on')) refreshPalette();
+      return;
+    }
+    const obj = m.template.clone(true);
+    sc.add(obj);
+    const sphere = new THREE.Box3().setFromObject(obj).getBoundingSphere(new THREE.Sphere());
+    const dist = sphere.radius / Math.sin(THREE.MathUtils.degToRad(cam.fov / 2)) * 1.02;
+    cam.position.copy(sphere.center).addScaledVector(view, dist);
+    cam.near = dist / 100; cam.far = dist * 3;
+    cam.updateProjectionMatrix();
+    cam.lookAt(sphere.center);
+    r.render(sc, cam);
+    m.thumb = r.domElement.toDataURL('image/png');
+    sc.remove(obj);
+    if(models.filter(x => x.thumb).length % 4 === 0){ refreshLibraryUI(); refreshXRLabel(); }   // 途中経過も表示
+    setTimeout(step, 30);
+  };
+  step();
 }
 
-/* プリセット登録（addModelが参照するUI要素の定義後に実行する） */
-addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true });
-addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true });
-addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true });
-addModel('松の木',        makePine(),    { preset:true });
-addModel('低木',          makeShrub(),   { preset:true });
+/* 素材パレット: サムネイル付きの一覧から選ぶ。種類のタブで絞り込み */
+const PAL_TABS = ['すべて', '石', '樹木', '構造物', '水・地面', '読み込み'];
+let palTab = 'すべて';
+function categoryOf(m){
+  if(m.plant) return '樹木';
+  if(m.density) return '石';
+  if(/池|小川|砂利|芝/.test(m.name)) return '水・地面';
+  return '構造物';
+}
+function refreshPalette(){
+  const tabs = document.getElementById('pal-tabs');
+  tabs.innerHTML = '';
+  for(const t of PAL_TABS){
+    const b = document.createElement('button');
+    b.textContent = t;
+    b.classList.toggle('on', t === palTab);
+    b.addEventListener('click', () => { palTab = t; refreshPalette(); });
+    tabs.appendChild(b);
+  }
+  const grid = document.getElementById('pal-grid');
+  grid.innerHTML = '';
+  models.forEach((m, i) => {
+    if(palTab === '読み込み' ? m.preset && !m.real : palTab !== 'すべて' && categoryOf(m) !== palTab) return;
+    const b = document.createElement('button');
+    b.classList.toggle('on', i === activeIndex);
+    const w = modelWeight(m);
+    b.innerHTML = `<img alt="" ${m.thumb ? `src="${m.thumb}"` : ''}><span class="pn">${escapeHtml(m.name)}</span>`
+                + `<span class="pd">高${fmtLen(m.size.y)}${w != null ? '・' + fmtWeight(w) : ''}</span>`;
+    b.addEventListener('click', () => {
+      activeIndex = i;
+      refreshXRLabel(); refreshLibraryUI();
+      closeXRPanels();
+      toast(`${m.name} — 床に向けてトリガーで設置`);
+    });
+    grid.appendChild(b);
+  });
+  if(!grid.children.length) grid.innerHTML = '<span class="pd">この分類の素材はありません</span>';
+}
+
+/* ---------- 選択中の物の操作バー ----------
+   ハンドトラッキング(つまむ＝トリガー)にはスティックやボタンが無いため、回転・根入れ・複製・削除を
+   画面下のバーで行えるようにする。コントローラーでも使える */
+const objBar = document.getElementById('xr-obj-bar');
+function setSelected(o){
+  selectedObj = o;
+  refreshObjBar();
+}
+function refreshObjBar(){
+  const show = renderer.xr.isPresenting && !!selectedObj;
+  objBar.classList.toggle('on', show);
+  document.getElementById('xr-obj-down').textContent = scaleLocked ? '▼ 5cm' : '縮小';
+  document.getElementById('xr-obj-up').textContent = scaleLocked ? '▲ 5cm' : '拡大';
+  document.getElementById('xr-obj-name').textContent = selectedObj ? (selectedObj.userData.modelName || '') : '';
+}
+objBar.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-o]');
+  const o = selectedObj;
+  if(!b || !o) return;
+  const act = b.dataset.o;
+  if(act === 'desel'){ setSelected(null); return; }
+  if(act === 'dup'){ duplicateTarget(o); return; }
+  if(act === 'del'){
+    pushUndo();
+    if(grabbed === o) grabbed = null;
+    if(hovered === o) hovered = null;
+    removeInstance(o);
+    updateCount(); scheduleSave();
+    toast('削除しました（「戻す」で元に戻せます）');
+    return;
+  }
+  pushUndo();
+  if(act === 'rotl' || act === 'rotr') o.rotation.y += (act === 'rotl' ? 1 : -1) * Math.PI / 12;
+  if(act === 'down' || act === 'up'){
+    const dir = act === 'down' ? 1 : -1;
+    if(scaleLocked){
+      sinkHoldUntil = 0;
+      adjustSink(o, dir, 0.05 / SINK_SPEED);   // 1回で5cm(地表・1/3根入れでは止まる)
+      const s = o.userData.sink || 0;
+      toast(s > 0.005 ? `根入れ ${fmtLen(s)}` : s < -0.005 ? `${fmtLen(-s)} 浮かせ` : '地表（根入れなし）');
+    }else{
+      const s = THREE.MathUtils.clamp(o.scale.x * (dir > 0 ? 1 / 1.05 : 1.05), 0.2, 4.0);
+      o.scale.setScalar(s);
+      applyGrowth(o);
+      const maxSink = (o.userData.baseSize ? o.userData.baseSize.y : 1) * s * 0.95;
+      if((o.userData.sink || 0) > maxSink){ o.position.y += o.userData.sink - maxSink; o.userData.sink = maxSink; }
+      toast(`×${s.toFixed(2)}`);
+    }
+  }
+  scheduleSave();
+});
+
+/* ================= 日当たり(太陽の位置と影) ================= */
+const LS_SUN = 'sekitei.sun.v1';
+const LS_NORTH = 'sekitei.north.v1';
+
+/* 太陽の方位(北=0°・時計回り)と高度(°)。NOAA の近似式、誤差は1°程度 */
+function sunPosition(year, month, day, hour, lat, lon, tz){
+  const rad = Math.PI / 180;
+  const N = Math.round((Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 1)) / 864e5) + 1;
+  const g = 2 * Math.PI / 365 * (N - 1 + (hour - 12) / 24);
+  const eqt = 229.18 * (0.000075 + 0.001868*Math.cos(g) - 0.032077*Math.sin(g) - 0.014615*Math.cos(2*g) - 0.040849*Math.sin(2*g));
+  const decl = 0.006918 - 0.399912*Math.cos(g) + 0.070257*Math.sin(g) - 0.006758*Math.cos(2*g)
+             + 0.000907*Math.sin(2*g) - 0.002697*Math.cos(3*g) + 0.00148*Math.sin(3*g);
+  const ha = ((hour * 60 + eqt + 4 * lon - 60 * tz) / 4 - 180) * rad;
+  const phi = lat * rad;
+  const cosZ = Math.sin(phi)*Math.sin(decl) + Math.cos(phi)*Math.cos(decl)*Math.cos(ha);
+  const el = 90 - Math.acos(THREE.MathUtils.clamp(cosZ, -1, 1)) / rad;
+  const azS = Math.atan2(Math.sin(ha), Math.cos(ha)*Math.sin(phi) - Math.tan(decl)*Math.cos(phi)) / rad;
+  return { az: (azS + 540) % 360, el };
+}
+
+const sunState = (() => {
+  const d = new Date();
+  const st = { month: d.getMonth() + 1, day: d.getDate(), hour: Math.round((d.getHours() + d.getMinutes()/60) * 2) / 2,
+               lat: 35.68, lon: 139.77, place: '東京（初期値）', years: 0 };
+  try{ Object.assign(st, JSON.parse(localStorage.getItem(LS_SUN) || '{}')); }catch(err){}
+  st.hour = THREE.MathUtils.clamp(st.hour, 4, 20);
+  return st;
+})();
+function saveSunState(){ try{ localStorage.setItem(LS_SUN, JSON.stringify(sunState)); }catch(err){} }
+
+/* 北の向き: 設置物の座標系(=空間アンカー基準)での水平ベクトル [x, z]。未設定なら -Z を北とみなす */
+let northVec = null;
+try{ northVec = JSON.parse(localStorage.getItem(LS_NORTH) || 'null'); }catch(err){}
+let northMode = false;
+
+const sunDirLocal = new THREE.Vector3(0.45, 0.8, 0.35).normalize();
+const sunDirWorld = new THREE.Vector3();
+let sunEl = 45;
+const DIR8 = ['北', '北東', '東', '南東', '南', '南西', '西', '北西'];
+const fmtHour = (h) => `${Math.floor(h)}:${h % 1 ? '30' : '00'}`;
+const tzOf = (m, d) => -new Date(new Date().getFullYear(), m - 1, d, 12).getTimezoneOffset() / 60;
+
+function sunAt(hour){
+  const y = new Date().getFullYear();
+  return sunPosition(y, sunState.month, sunState.day, hour, sunState.lat, sunState.lon, tzOf(sunState.month, sunState.day));
+}
+
+/* ---------- 季節(月から自動)と成長(年数) ---------- */
+const GROW_YEARS = [0, 3, 5, 10];
+const fmtYears = (y) => y ? `${y}年後` : '植栽時';
+
+/* 葉色(sRGB)。null は落葉(葉なし) */
+function foliageColor(role, month){
+  if(role === 'decid'){
+    if(month <= 3) return null;
+    return { 4: '#A5C878', 5: '#86B25A', 10: '#7C8C3C', 11: '#B8502C', 12: '#A8683A' }[month] || '#557F3E';
+  }
+  if(role === 'ever') return (month === 4 || month === 5) ? '#5A7F42' : '#49683A';   // 春は新芽で明るく
+  return undefined;
+}
+function seasonNote(month){
+  return { 1: '冬（落葉樹は葉なし・芝は休眠）', 2: '冬（落葉樹は葉なし・芝は休眠）', 3: '早春（芽吹き前）',
+           4: '新緑', 5: '新緑', 6: '夏', 7: '夏', 8: '夏', 9: '夏', 10: '秋（色づき始め）', 11: '紅葉', 12: '落葉期' }[month];
+}
+function applySeasonTo(root){
+  if(!root) return;
+  const month = sunState.month;
+  root.traverse(o => {
+    if(!o.isMesh) return;
+    for(const mt of (Array.isArray(o.material) ? o.material : [o.material])){
+      const role = mt.userData.role;
+      if(role === 'lawn'){ mt.map = lawnTexture(month); continue; }
+      const hex = foliageColor(role, month);
+      if(hex === undefined) continue;
+      o.visible = hex !== null;
+      if(hex) mt.color.set(hex).multiplyScalar(mt.userData.shade || 1);
+    }
+  });
+}
+function applySeasonAll(){
+  placedGroup.children.forEach(applySeasonTo);
+  ghostGroup.children.forEach(applySeasonTo);
+  applySeasonTo(previewObj);
+}
+
+/* 成長: 植栽時の樹高 h0 に 年数×年あたりの伸び を足し、最大樹高で頭打ち。形は相似に拡大 */
+function growthFactor(m, s){
+  if(!m || !m.plant || !sunState.years) return 1;
+  const h0 = m.size.y * s;
+  return Math.min(h0 + m.plant.rate * sunState.years, Math.max(m.plant.max, h0)) / h0;
+}
+function applyGrowth(inst){
+  const g = inst.children[0];
+  if(!g || g.name !== 'growth') return;
+  g.scale.setScalar(growthFactor(models.find(x => x.id === inst.userData.modelId), inst.scale.x));
+}
+function applyGrowthAll(){ placedGroup.children.forEach(applyGrowth); ghostGroup.children.forEach(applyGrowth); }
+function setGrowYears(y){
+  sunState.years = y; saveSunState();
+  applyGrowthAll();
+  refreshSunUI();
+}
+
+/* 日の出・日の入(暦と同じく太陽上端+大気差 = 高度-0.833° を1分刻みで探す) */
+function sunTimes(){
+  const H = -0.833;
+  let rise = null, set = null, prev = sunAt(0).el;
+  for(let m=1; m<=24*60; m++){
+    const el = sunAt(m / 60).el;
+    if(prev < H && el >= H && rise == null) rise = m / 60;
+    if(prev >= H && el < H) set = m / 60;
+    prev = el;
+  }
+  const f = (h) => h == null ? '—' : `${Math.floor(h)}:${String(Math.round(h % 1 * 60)).padStart(2, '0')}`;
+  return `日の出 ${f(rise)}・日の入 ${f(set)}`;
+}
+
+function applySun(){
+  const { az, el } = sunAt(sunState.hour);
+  sunEl = el;
+  const N = new THREE.Vector3(northVec ? northVec[0] : 0, 0, northVec ? northVec[1] : -1).normalize();
+  const E = new THREE.Vector3().crossVectors(N, new THREE.Vector3(0, 1, 0));   // 北×上 = 東
+  const a = az * Math.PI / 180, e = Math.max(el, 2) * Math.PI / 180;
+  sunDirLocal.copy(N).multiplyScalar(Math.cos(a)).addScaledVector(E, Math.sin(a))
+    .multiplyScalar(Math.cos(e)).setY(Math.sin(e)).normalize();
+  // 高度が低いほど弱く・暖色に。日没後は影なし
+  const k = THREE.MathUtils.smoothstep(el, -1, 12);
+  sun.intensity = 1.9 * k;
+  sun.castShadow = el > 0;
+  sun.color.setHSL(0.09, THREE.MathUtils.lerp(0.75, 0.25, THREE.MathUtils.smoothstep(el, 5, 35)), 0.93);
+  applySeasonAll();
+  refreshSunUI();
+}
+
+function refreshSunUI(){
+  const { az, el } = sunAt(sunState.hour);
+  const dateText = `${sunState.month}月${sunState.day}日`;
+  const info = el > 0
+    ? `太陽 高度${Math.round(el)}°・方位 ${DIR8[Math.round(az / 45) % 8]}（${Math.round(az)}°）`
+    : (sunState.hour < 12 ? '日の出前（影なし）' : '日没後（影なし）');
+  document.getElementById('sun-hour-label').textContent = fmtHour(sunState.hour);
+  document.getElementById('sun-month').value = String(sunState.month);
+  document.getElementById('sun-hour').value = String(sunState.hour);
+  document.getElementById('sun-info').textContent = `${dateText} ${fmtHour(sunState.hour)} — ${info}　${sunTimes()}`;
+  document.getElementById('sun-place').textContent = `${sunState.place}（緯度${sunState.lat.toFixed(2)}・経度${sunState.lon.toFixed(2)}）`;
+  document.getElementById('xr-sun-month').textContent = dateText;
+  document.getElementById('xr-sun-hour').textContent = fmtHour(sunState.hour);
+  document.getElementById('xr-sun-info').textContent = `${info}\n${sunTimes()}\n季節: ${seasonNote(sunState.month)}${northVec ? '' : '\n※ 北が未設定です'}`;
+  document.getElementById('grow-years').value = String(sunState.years || 0);
+  document.getElementById('season-note').textContent = `季節: ${seasonNote(sunState.month)}（月に合わせて葉色・芝の色が変わります）`;
+  document.getElementById('xr-grow').textContent = fmtYears(sunState.years || 0);
+}
+
+/* 毎フレーム: 太陽方向をアンカーの向きに合わせてワールドへ。影の範囲は見ている位置に追従 */
+function updateSunLight(center){
+  sunDirWorld.copy(sunDirLocal).applyQuaternion(anchorRoot.quaternion);
+  sun.target.position.set(center.x, 0, center.z);
+  sun.position.copy(sun.target.position).addScaledVector(sunDirWorld, 8);
+}
+
+function setSunHour(h){ sunState.hour = THREE.MathUtils.clamp(h, 4, 20); saveSunState(); applySun(); }
+function setSunMonth(m){
+  sunState.month = ((m - 1 + 12) % 12) + 1;
+  sunState.day = Math.min(sunState.day, new Date(new Date().getFullYear(), sunState.month, 0).getDate());
+  saveSunState(); applySun();
+}
+function setSunNow(){
+  const d = new Date();
+  sunState.month = d.getMonth() + 1; sunState.day = d.getDate();
+  setSunHour(Math.round((d.getHours() + d.getMinutes()/60) * 2) / 2);
+}
+
+/* 1日の影の動きを再生(5:00→19:00 を約14秒) */
+let sunPlayTimer = null;
+function toggleSunPlay(){
+  if(sunPlayTimer){ clearInterval(sunPlayTimer); sunPlayTimer = null; return; }
+  setSunHour(5);
+  sunPlayTimer = setInterval(() => {
+    if(sunState.hour >= 19){ clearInterval(sunPlayTimer); sunPlayTimer = null; return; }
+    setSunHour(sunState.hour + 0.5);
+  }, 500);
+}
+
+/* 北合わせ: 次のトリガーで、コントローラーの向き(水平成分)を北として記録 */
+function setNorthFrom(c){
+  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(c.getWorldQuaternion(new THREE.Quaternion()));
+  dir.applyQuaternion(anchorRoot.quaternion.clone().invert());   // アンカー基準へ
+  dir.y = 0;
+  if(dir.lengthSq() < 1e-4){ toast('水平に近い向きで北を指してください'); return; }
+  dir.normalize();
+  northVec = [dir.x, dir.z];
+  try{ localStorage.setItem(LS_NORTH, JSON.stringify(northVec)); }catch(err){}
+  applySun();
+  toast('北を設定しました — 影が実際の方角になります');
+}
+
+/* ランチャー側の操作 */
+const sunMonthEl = document.getElementById('sun-month');
+for(let m=1; m<=12; m++) sunMonthEl.add(new Option(`${m}月`, String(m)));
+sunMonthEl.addEventListener('change', () => setSunMonth(Number(sunMonthEl.value)));
+document.getElementById('sun-hour').addEventListener('input', (e) => setSunHour(Number(e.target.value)));
+document.getElementById('sun-now-btn').addEventListener('click', setSunNow);
+const growYearsEl = document.getElementById('grow-years');
+GROW_YEARS.forEach(y => growYearsEl.add(new Option(fmtYears(y), String(y))));
+growYearsEl.addEventListener('change', () => setGrowYears(Number(growYearsEl.value)));
+document.getElementById('sun-geo-btn').addEventListener('click', () => {
+  if(!navigator.geolocation){ alert('この端末では現在地を取得できません'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    sunState.lat = pos.coords.latitude; sunState.lon = pos.coords.longitude; sunState.place = '現在地';
+    saveSunState(); applySun();
+  }, err => alert('現在地を取得できませんでした: ' + err.message), { timeout: 10000 });
+});
+
+/* MR側の操作 */
+const sunPanel = document.getElementById('xr-sun-panel');
+sunPanel.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-sun]');
+  if(!b) return;
+  const act = b.dataset.sun;
+  if(act === 'month-') setSunMonth(sunState.month - 1);
+  if(act === 'month+') setSunMonth(sunState.month + 1);
+  if(act === 'hour-') setSunHour(sunState.hour - 0.5);
+  if(act === 'hour+') setSunHour(sunState.hour + 0.5);
+  if(act === 'now') setSunNow();
+  if(act === 'years-' || act === 'years+'){
+    const i = GROW_YEARS.indexOf(sunState.years || 0);
+    setGrowYears(GROW_YEARS[(i + (act === 'years+' ? 1 : GROW_YEARS.length - 1)) % GROW_YEARS.length]);
+  }
+  if(act === 'play') toggleSunPlay();
+  if(act === 'north'){
+    setMeasureMode(false); groundMode = false;
+    northMode = true;
+    closeXRPanels();
+    updateModeChip();
+    toast('北の方角にコントローラーを向けてトリガー');
+  }
+});
+
+/* ---------- 地面の記録(MR操作) ---------- */
+let groundMode = false;
+const groundPanel = document.getElementById('xr-ground-panel');
+
+/* コントローラーの先端を地面に当ててトリガー → その点の高さを記録。
+   近く(30cm以内)に既存の点があれば置き換える(測り直し) */
+function recordGroundPoint(c){
+  const tip = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld);
+  const p = worldToPlaced(tip);
+  p.y -= GROUND_TIP_OFFSET;
+  const pts = groundPts.filter(([x, , z]) => (x - p.x) ** 2 + (z - p.z) ** 2 > 0.09);
+  const replaced = pts.length < groundPts.length;
+  const r = (v) => Math.round(v * 1000) / 1000;
+  pts.push([r(p.x), r(p.y), r(p.z)]);
+  setGroundPts(pts);
+  toast(`${replaced ? '測り直しました' : `地面を記録（${pts.length}点目）`} — ${groundSummary()}`);
+}
+
+function refreshGroundUI(){
+  const summary = groundSummary();
+  const st = document.getElementById('ground-status');
+  if(st) st.textContent = summary;
+  const info = document.getElementById('xr-ground-info');
+  if(info) info.textContent = `${summary}\n${groundMode ? '記録中: コントローラーの先端を地面に軽く当ててトリガー' : '「記録モード」で地面の高さを測ります'}`;
+  groundPanel.querySelector('[data-g="record"]').classList.toggle('on', groundMode);
+  groundPanel.querySelector('[data-g="show"]').classList.toggle('on', terrainShown);
+}
+
+const planPanel = document.getElementById('xr-plan-panel');
+planPanel.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-p]');
+  if(!b) return;
+  if(b.dataset.p === 'ghost') toggleGhost();
+  if(b.dataset.p === 'dup') newPlan({ copy: true });
+});
+groundPanel.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-g]');
+  if(!b) return;
+  const act = b.dataset.g;
+  if(act === 'record'){
+    const on = !groundMode;
+    setMeasureMode(false); northMode = false;
+    groundMode = on;
+    if(on){ setTerrainShown(true); closeXRPanels(); }
+    updateModeChip();
+    toast(on ? '記録モード: 先端を地面に当ててトリガー' : '記録モードを終了しました');
+  }
+  if(act === 'show') setTerrainShown(!terrainShown);
+  if(act === 'undo' && groundPts.length){ setGroundPts(groundPts.slice(0, -1)); toast('最後の点を消しました'); }
+  if(act === 'clear' && groundPts.length){ setGroundPts([]); toast('地面の記録を消しました（平らな床に戻ります）'); }
+  refreshGroundUI();
+});
+document.getElementById('ground-clear-btn').addEventListener('click', () => {
+  if(groundPts.length && confirm('地面の記録を消して、平らな床に戻しますか？')) setGroundPts([]);
+});
+
+/* ================= 起動シーケンス ================= */
+/* プリセット登録(参照するUI要素の宣言より後に実行する必要がある) */
+addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true, kind:'andesite' });
+addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true, kind:'andesite' });
+addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true, kind:'andesite' });
+addModel('飛石（3枚）',   makeSteppingStones(), { preset:true, kind:'andesite' });
+addModel('松の木',        makePine(),    { preset:true, kind:'ever' });
+addModel('もみじ',        makeMaple(),   { preset:true, kind:'decid' });
+addModel('低木',          makeShrub(),   { preset:true, kind:'shrub' });
 addModel('木柵（1m）',    makeFence(),   { preset:true });
+addModel('竹垣（1m）',    makeBambooFence(), { preset:true });
+addModel('ウッドデッキ',  makeDeck(),    { preset:true });
 addModel('小川（2m）',    makeStream(),  { preset:true, lift:0.01 });
 addModel('池',            makePond(),    { preset:true, lift:0.01 });
-addModel('石灯籠',        makeLantern(), { preset:true });
-
-refreshLibraryUI();
-refreshPreview();
+addModel('蹲踞（つくばい）', makeTsukubai(), { preset:true, kind:'andesite' });
+addModel('砂利敷き（2×2m）', makeGravel(), { preset:true, lift:0.006 });
+addModel('芝生（2m円）',  makeLawn(),    { preset:true, lift:0.005 });
+addModel('石灯籠',        makeLantern(), { preset:true, kind:'andesite' });
+updateLayoutStatus();
+applySun();
+rebuildTerrain();
 
 window.__appReady = true;   // 初期化が最後まで到達した時点で起動成功とみなす
+/* リアル素材 → 保存済みGLB → 配置レイアウト の順で復元(配置がこれらのモデルを参照するため) */
+loadManifestPresets().then(restoreSavedGLBs).then(loadSavedLayout)
+  .then(() => { thumbsReady = true; scheduleThumbs(); });
+
+/* 動作確認用(URLに ?debug を付けたときだけ公開) */
+if(new URLSearchParams(location.search).has('debug')){
+  window.__sekitei = { THREE, scene, camera, controls, models, placedGroup, previewGround,
+                       adjustSink, serializeLayout, placedTotals, modelWeight,
+                       sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun,
+                       setGrowYears, growthFactor, setGroundPts, terrainHeight, setTerrainShown, updateClipPlanes, floorPointFor,
+                       switchPlan, newPlan, getPlans: () => plans, ghostGroup, renderPlanImage, refreshPalette, updateModeChip, setSelected, refreshObjBar,
+                       getSelected: () => selectedObj, drawHUD, hud };
+}
 
 /* ================= メインループ ================= */
 const clock = new THREE.Clock();
@@ -1065,6 +3369,7 @@ renderer.setAnimationLoop((t, frame) => {
   const dt = Math.min(clock.getDelta(), 0.05);
 
   if(renderer.xr.isPresenting){
+    if(frame) updateAnchor(frame);
     hovered = null;
     const order = activeController ? [activeController, ...controllers.filter(c => c !== activeController)] : controllers;
     for(const c of order){
@@ -1082,7 +3387,10 @@ renderer.setAnimationLoop((t, frame) => {
     }
     if(grabbed && activeController){
       const p = activeController.userData.lastFloorPoint;
-      if(p) grabbed.position.copy(p);
+      if(p){
+        grabbed.position.copy(worldToPlaced(p));
+        grabbed.position.y -= grabbed.userData.sink || 0;   // 根入れ深さを保ったまま移動
+      }
       reticle.visible = false;
     }else if(reticlePoint && !hovered){
       reticle.position.copy(reticlePoint);
@@ -1098,14 +3406,24 @@ renderer.setAnimationLoop((t, frame) => {
     }else{
       boxHelper.visible = false;
     }
+    selHelper.visible = !!selectedObj && selectedObj !== target;
+    if(selHelper.visible) selHelper.setFromObject(selectedObj);
 
     pollThumbsticks(dt);
     pollButtons();
     updateHUD();
+    updateTargetInfo();
+
+    /* 影の範囲をユーザーに追従させる(広い庭でも近くの影が切れないように) */
+    const xrCam = renderer.xr.getCamera();
+    updateSunLight(xrCam.position);
+    shadowGround.position.set(xrCam.position.x, SHADOW_LIFT, xrCam.position.z);
   }else{
     if(previewObj) previewObj.rotation.y += dt * 0.35;
     controls.update();
+    updateSunLight(controls.target);
   }
+  updateClipPlanes();
 
   renderer.render(scene, camera);
 });
