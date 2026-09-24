@@ -313,6 +313,10 @@
       <button class="ghost" id="layout-import-btn">読み込み</button>
       <input type="file" id="layout-input" accept=".json,application/json" hidden>
     </div>
+    <div class="btn-row">
+      <button class="ghost" id="plan-image-btn">配置図を保存（PNG）</button>
+      <button class="ghost" id="view-image-btn">3D画像を保存（PNG）</button>
+    </div>
 
     <label class="opt-row"><input type="checkbox" id="opt-occlusion" checked>
       <span>実物による遮蔽<small>現実の木や人の後ろに置いた物が隠れます（Depth API・試験機能）</small></span></label>
@@ -367,6 +371,7 @@
       ※ Questにダウンロードした .glb は「GLBファイルを追加」から読み込めます。<br>
       ※ スキャンは Scaniverse / Polycam 等でGLB書き出し。1個あたり10万ポリゴン以下推奨。<br>
       ※ 全員に共通の「リアル素材」は、リポジトリの presets/ フォルダにGLBを置いて登録します（手順は presets/README.md）。<br>
+      ※ MR中の見た目（現実の庭と重なった状態）は、Quest本体のスクリーンショット機能（Metaボタンを押しながらトリガー）で撮影できます。<br>
       ※ 重量は形状から求めた体積×比重の<b>目安</b>です（根入れで埋めた部分も含む）。スキャン精度や石質で2割程度ずれることがあるため、重機・吊り具は余裕を見て選んでください。<br>
       ※ 配置と読み込んだGLBはこの端末に自動保存され、次回開いたとき復元されます。<br>
       ※ Questでは空間アンカーで前回と同じ実際の位置に配置を復元します。
@@ -1358,7 +1363,7 @@ startBtn.addEventListener('click', async () => {
 renderer.xr.addEventListener('sessionstart', () => {
   launcher.style.display = 'none';
   xrOverlay.classList.add('on');
-  previewGround.visible = false;
+  refreshPreviewGround();
   if(previewObj){ scene.remove(previewObj); previewObj = null; }
   renderer.setClearColor(0x000000, 0);   // パススルー
   shadowGround.visible = true;
@@ -1382,7 +1387,7 @@ renderer.xr.addEventListener('sessionend', () => {
   xrSession = null;
   launcher.style.display = '';
   xrOverlay.classList.remove('on');
-  previewGround.visible = true;
+  refreshPreviewGround();
   renderer.setClearColor(0xEAE7DC, 1);
   hitSources.clear();
   hovered = null; grabbed = null;
@@ -1515,7 +1520,7 @@ const terrainGroup = new THREE.Group();   // placedGroup と同じ座標系(ア�
 anchorRoot.add(terrainGroup);
 let groundPts = [];
 try{ groundPts = JSON.parse(localStorage.getItem(LS_GROUND) || '[]'); }catch(err){}
-let terrainMesh = null, terrainShadow = null, terrainShown = false;
+let terrainMesh = null, terrainShadow = null, terrainSurface = null, terrainShown = false;
 
 function terrainHeight(x, z){
   if(!groundPts.length) return 0;
@@ -1540,7 +1545,7 @@ function rebuildTerrain(){
     terrainGroup.remove(o);
     o.traverse(c => { if(c.geometry) c.geometry.dispose(); if(c.material) c.material.dispose(); });
   }
-  terrainMesh = terrainShadow = null;
+  terrainMesh = terrainShadow = terrainSurface = null;
   if(groundPts.length){
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for(const [x, , z] of groundPts){ minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
@@ -1560,7 +1565,10 @@ function rebuildTerrain(){
     terrainShadow = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     terrainShadow.position.y = SHADOW_LIFT;
     terrainShadow.receiveShadow = true;
-    terrainGroup.add(terrainMesh, terrainShadow);
+    // PC表示用の地面(MR中は現実の地面が見えるので出さない)
+    terrainSurface = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xDDD9CA, roughness: 1 }));
+    terrainSurface.receiveShadow = true;
+    terrainGroup.add(terrainMesh, terrainShadow, terrainSurface);
     // 記録した点の目印
     const pinGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.12, 8);
     pinGeo.translate(0, 0.06, 0);
@@ -1574,7 +1582,14 @@ function rebuildTerrain(){
     }
   }
   shadowGround.material.visible = !terrainShadow;   // 地形があるときは地形の面に影を落とす
+  refreshPreviewGround();
   refreshGroundUI();
+}
+/* PC表示の地面: 地形を記録していればその起伏、なければ枯山水の円盤。MR中はどちらも出さない */
+function refreshPreviewGround(){
+  const xr = renderer.xr.isPresenting;
+  previewGround.visible = !xr && !terrainSurface;
+  if(terrainSurface) terrainSurface.visible = !xr;
 }
 function setTerrainShown(on){
   terrainShown = on;
@@ -1737,6 +1752,7 @@ layoutInput.addEventListener('change', async (e) => {
     if(placedGroup.children.length) pushUndo();
     if(Array.isArray(data.ground)) setGroundPts(data.ground, { snap: false });   // 地面の記録も一緒に復元
     const missing = applyLayout(data);
+    if(!Array.isArray(data.ground) && groundPts.length) snapAllToTerrain();   // 平らな床で作った配置はこの現場の地表に合わせる
     layoutReady = true;
     saveLayoutNow();
     refreshPreview();
@@ -1995,6 +2011,201 @@ document.getElementById('plan-dup-btn').addEventListener('click', () => newPlan(
 document.getElementById('plan-new-btn').addEventListener('click', () => newPlan({ copy: false }));
 document.getElementById('plan-rename-btn').addEventListener('click', renamePlan);
 document.getElementById('plan-del-btn').addEventListener('click', deletePlan);
+
+/* ---------- 配置図(上から見た図)と3D画像の出力 ---------- */
+
+/* モデルを真上から見た輪郭(凸包)。頂点が多いスキャンは間引いて計算し、結果を覚えておく */
+function modelHull(m){
+  if(m.hull) return m.hull;
+  m.template.updateMatrixWorld(true);
+  const inv = m.template.matrixWorld.clone().invert();
+  const mm = new THREE.Matrix4(), v = new THREE.Vector3();
+  const pts = [];
+  m.template.traverse(o => {
+    if(!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    mm.multiplyMatrices(inv, o.matrixWorld);
+    const pos = o.geometry.attributes.position;
+    const stride = Math.max(1, Math.ceil(pos.count / 4000));
+    for(let i=0; i<pos.count; i+=stride){ v.fromBufferAttribute(pos, i).applyMatrix4(mm); pts.push([v.x, v.z]); }
+  });
+  pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const lower = [], upper = [];
+  for(const p of pts){ while(lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop(); lower.push(p); }
+  for(let i=pts.length-1; i>=0; i--){ const p = pts[i]; while(upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop(); upper.push(p); }
+  m.hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+  return m.hull;
+}
+
+function downloadCanvas(canvas, filename){
+  canvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/png');
+}
+function dateStamp(){
+  const d = new Date(), pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+}
+
+function renderPlanImage(){
+  saveLayoutNow();
+  const plan = plans ? currentPlan() : { name: '配置', items: serializeLayout().items };
+  const W = 2400, H = 1600, MAPW = 1560, PAD = 90;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const FONT = '"Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", sans-serif';
+  g.fillStyle = '#FBFAF6'; g.fillRect(0, 0, W, H);
+
+  // 北を上にする座標変換(北が未設定ならアンカーの -Z を北とみなす)
+  const N = northVec ? new THREE.Vector2(northVec[0], northVec[1]).normalize() : new THREE.Vector2(0, -1);
+  const E = new THREE.Vector2(-N.y, N.x);
+  const toUV = (x, z) => [x * E.x + z * E.y, x * N.x + z * N.y];
+
+  // 各設置物の輪郭をワールド(アンカー)座標で求める
+  const rows = [];
+  plan.items.forEach((it, i) => {
+    const m = models.find(x => x.id === it.id) || models.find(x => x.name === it.name);
+    if(!m) return;
+    const s = it.scale || 1, cr = Math.cos(it.rotY || 0), sr = Math.sin(it.rotY || 0);
+    const outline = modelHull(m).map(([x, z]) => {
+      const X = x * s, Z = z * s;   // Y軸回転: x' = x cosθ + z sinθ, z' = -x sinθ + z cosθ
+      return toUV(it.pos[0] + X * cr + Z * sr, it.pos[2] - X * sr + Z * cr);
+    });
+    const sink = Number(it.sink) || 0;
+    rows.push({ no: rows.length + 1, m, it, outline, center: toUV(it.pos[0], it.pos[2]), s, sink,
+                groundY: groundPts.length ? terrainHeight(it.pos[0], it.pos[2]) : it.pos[1] + sink, weight: modelWeight(m, s) });
+  });
+
+  // 表示範囲と縮尺(1mグリッドが見やすい大きさに収める)
+  let minU = -2, maxU = 2, minV = -2, maxV = 2;
+  for(const r of rows) for(const [u, v] of r.outline){ minU = Math.min(minU, u); maxU = Math.max(maxU, u); minV = Math.min(minV, v); maxV = Math.max(maxV, v); }
+  for(const [x, , z] of groundPts){ const [u, v] = toUV(x, z); minU = Math.min(minU, u); maxU = Math.max(maxU, u); minV = Math.min(minV, v); maxV = Math.max(maxV, v); }
+  minU -= 0.5; maxU += 0.5; minV -= 0.5; maxV += 0.5;
+  const top = 170, mapH = H - top - PAD;
+  const scale = Math.min((MAPW - PAD * 2) / (maxU - minU), mapH / (maxV - minV));
+  const ox = PAD + ((MAPW - PAD * 2) - (maxU - minU) * scale) / 2 - minU * scale;
+  const oy = top + (mapH - (maxV - minV) * scale) / 2 + maxV * scale;
+  const X = (u) => ox + u * scale, Y = (v) => oy - v * scale;
+
+  // 見出し
+  g.fillStyle = '#23271F';
+  g.font = `700 46px ${FONT}`;
+  g.fillText(`配置図 — ${plan.name}`, PAD, 88);
+  g.font = `400 24px ${FONT}`;
+  g.fillStyle = '#4A4F44';
+  const today = new Date();
+  g.fillText(`${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日　石庭 造園MRシミュレーター　（寸法・重量は目安）`, PAD, 130);
+
+  // 1mグリッド
+  g.strokeStyle = 'rgba(95,112,82,.18)'; g.lineWidth = 1;
+  for(let u = Math.ceil(minU); u <= maxU; u++){ g.beginPath(); g.moveTo(X(u), Y(minV)); g.lineTo(X(u), Y(maxV)); g.stroke(); }
+  for(let v = Math.ceil(minV); v <= maxV; v++){ g.beginPath(); g.moveTo(X(minU), Y(v)); g.lineTo(X(maxU), Y(v)); g.stroke(); }
+  g.strokeStyle = '#C9C5B4'; g.lineWidth = 2;
+  g.strokeRect(X(minU), Y(maxV), (maxU - minU) * scale, (maxV - minV) * scale);
+
+  // 地面の記録点(最も低い点を GL±0 として高さを表示)
+  const baseY = groundPts.length ? Math.min(...groundPts.map(p => p[1])) : 0;
+  const fmtGL = (y) => { const cm = Math.round((y - baseY) * 100); return cm === 0 ? 'GL±0' : `GL${cm > 0 ? '+' : '−'}${Math.abs(cm)}cm`; };
+  g.font = `400 20px ${FONT}`;
+  for(const [x, y, z] of groundPts){
+    const [u, v] = toUV(x, z);
+    g.fillStyle = '#C0503C';
+    g.beginPath(); g.arc(X(u), Y(v), 6, 0, Math.PI * 2); g.fill();
+    g.fillText(fmtGL(y), X(u) + 10, Y(v) - 8);
+  }
+
+  // 設置物: 樹木は緑、石は灰、その他は茶
+  for(const r of rows){
+    const fill = r.m.plant ? 'rgba(95,130,70,.35)' : r.m.density ? 'rgba(120,122,112,.75)' : 'rgba(150,120,85,.45)';
+    const stroke = r.m.plant ? '#46543C' : r.m.density ? '#3B3D36' : '#6B4F36';
+    g.beginPath();
+    r.outline.forEach(([u, v], i) => i ? g.lineTo(X(u), Y(v)) : g.moveTo(X(u), Y(v)));
+    g.closePath();
+    g.fillStyle = fill; g.fill();
+    g.strokeStyle = stroke; g.lineWidth = 2.5; g.stroke();
+  }
+  for(const r of rows){   // 番号は輪郭の上に重ねて描く
+    const [u, v] = r.center;
+    g.fillStyle = '#23271F';
+    g.beginPath(); g.arc(X(u), Y(v), 20, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#FBFAF6';
+    g.font = `700 22px ${FONT}`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(r.no), X(u), Y(v) + 1);
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  }
+
+  // 方位記号
+  const nx = MAPW - PAD - 40, ny = top + 70;
+  g.fillStyle = '#23271F';
+  g.beginPath(); g.moveTo(nx, ny - 46); g.lineTo(nx + 18, ny + 16); g.lineTo(nx, ny + 4); g.lineTo(nx - 18, ny + 16); g.closePath(); g.fill();
+  g.font = `700 26px ${FONT}`; g.textAlign = 'center';
+  g.fillText('N', nx, ny + 50);
+  if(!northVec){ g.font = `400 16px ${FONT}`; g.fillStyle = '#8A4A2E'; g.fillText('北は未設定（仮）', nx, ny + 76); }
+  g.textAlign = 'left';
+
+  // スケールバー
+  const bar = scale >= 120 ? 1 : scale >= 50 ? 2 : 5;
+  const bx = PAD, by = H - PAD + 40;
+  g.fillStyle = '#23271F';
+  g.fillRect(bx, by, bar * scale, 8);
+  g.fillStyle = '#FBFAF6'; g.fillRect(bx + bar * scale / 2, by + 2, bar * scale / 2 - 2, 4);
+  g.fillStyle = '#23271F'; g.font = `400 20px ${FONT}`;
+  g.fillText('0', bx - 4, by - 8); g.fillText(`${bar}m`, bx + bar * scale - 14, by - 8);
+  g.fillText('グリッド 1m', bx + bar * scale + 30, by + 8);
+
+  // 一覧表
+  const tx = MAPW + 20;
+  g.font = `700 28px ${FONT}`;
+  g.fillText('一覧', tx, top + 20);
+  const cols = [['No', 0], ['名称', 50], ['寸法 幅×奥×高', 260], ['根入れ', 500], ['推定重量', 585], ['地盤高', 690]];
+  g.font = `700 19px ${FONT}`; g.fillStyle = '#4A4F44';
+  cols.forEach(([t, x]) => g.fillText(t, tx + x, top + 62));
+  g.strokeStyle = '#C9C5B4'; g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(tx, top + 74); g.lineTo(W - 40, top + 74); g.stroke();
+  const rowH = Math.min(40, (H - top - 230) / Math.max(1, rows.length));
+  g.font = `400 ${Math.min(19, rowH - 12)}px ${FONT}`;
+  let total = 0, stones = 0;
+  rows.forEach((r, i) => {
+    const y = top + 104 + i * rowH;
+    const sz = r.m.size;
+    const dims = `${fmtLen(sz.x * r.s)}×${fmtLen(sz.z * r.s)}×${fmtLen(sz.y * r.s)}`;
+    g.fillStyle = '#23271F';
+    g.fillText(String(r.no), tx, y);
+    let name = r.m.name;
+    while(g.measureText(name).width > 200 && name.length > 2) name = name.slice(0, -2) + '…';
+    g.fillText(name, tx + 50, y);
+    g.fillText(dims, tx + 260, y);
+    g.fillText(r.sink > 0.005 ? fmtLen(r.sink) : '—', tx + 500, y);
+    g.fillText(r.weight != null ? fmtWeight(r.weight) : '—', tx + 585, y);
+    g.fillText(groundPts.length ? fmtGL(r.groundY) : '—', tx + 690, y);
+    if(r.weight != null){ total += r.weight; stones++; }
+  });
+  const fy = top + 104 + rows.length * rowH + 16;
+  g.beginPath(); g.moveTo(tx, fy - 24); g.lineTo(W - 40, fy - 24); g.stroke();
+  g.font = `700 21px ${FONT}`;
+  g.fillText(stones ? `石 ${stones}個　合計 ${fmtWeight(total)}（目安・根入れ部分を含む）` : '石の重量: なし', tx, fy + 4);
+  if(!rows.length){ g.font = `400 24px ${FONT}`; g.fillText('配置がありません', PAD + 40, top + 80); }
+  return c;
+}
+
+document.getElementById('plan-image-btn').addEventListener('click', () => {
+  // ファイル名に日本語を含めると Chromium 系で "download" に置き換わることがあるため英数字のみ
+  downloadCanvas(renderPlanImage(), `sekitei-plan-${plans ? plans.active : 'A'}-${dateStamp()}.png`);
+});
+/* 3Dプレビュー(PC表示)をそのまま画像に。描画直後に読み出すことで保存用バッファなしで取得できる */
+document.getElementById('view-image-btn').addEventListener('click', () => {
+  const hadPreview = previewObj && previewObj.visible;
+  if(previewObj) previewObj.visible = false;   // 選択中モデルの回転プレビューは写さない
+  renderer.render(scene, camera);
+  if(previewObj) previewObj.visible = hadPreview;
+  downloadCanvas(renderer.domElement, `sekitei-3d-${plans ? plans.active : 'A'}-${dateStamp()}.png`);
+});
 
 /* ---------- アンドゥ ---------- */
 const undoStack = [];
@@ -2688,7 +2899,7 @@ if(new URLSearchParams(location.search).has('debug')){
                        adjustSink, serializeLayout, placedTotals, modelWeight,
                        sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun,
                        setGrowYears, growthFactor, setGroundPts, terrainHeight, setTerrainShown, updateClipPlanes, floorPointFor,
-                       switchPlan, newPlan, getPlans: () => plans, ghostGroup };
+                       switchPlan, newPlan, getPlans: () => plans, ghostGroup, renderPlanImage };
 }
 
 /* ================= メインループ ================= */
