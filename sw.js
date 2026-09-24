@@ -1,21 +1,20 @@
 /* 石庭 — オフライン対応の Service Worker
    現場(庭)は電波が弱いことが多いので、一度開いたら通信なしでも起動できるようにする。
    - アプリ本体・素材一覧: ネット優先(3秒で諦めてキャッシュ)。更新がすぐ反映される
-   - three.js などのCDN: バージョン固定URLなのでキャッシュ優先
-   - フォント・presets の GLB: キャッシュを先に返し、裏で最新に更新 */
-const VERSION = 'sekitei-v1';
-const THREE_BASE = 'https://cdn.jsdelivr.net/npm/three@0.180.0/';
+   - 同梱の three.js(vendor)・フォント・presets の GLB: キャッシュを先に返し、裏で最新に更新 */
+const VERSION = 'sekitei-v2';
+const THREE_BASE = './vendor/three/';
 const PRECACHE = [
   './',
   './index.html',
   './presets/manifest.json',
-  THREE_BASE + 'build/three.module.js',
-  THREE_BASE + 'build/three.core.js',
-  THREE_BASE + 'examples/jsm/loaders/GLTFLoader.js',
-  THREE_BASE + 'examples/jsm/loaders/DRACOLoader.js',
-  THREE_BASE + 'examples/jsm/controls/OrbitControls.js',
-  THREE_BASE + 'examples/jsm/libs/meshopt_decoder.module.js',
-  THREE_BASE + 'examples/jsm/utils/BufferGeometryUtils.js',
+  THREE_BASE + 'three.module.js',
+  THREE_BASE + 'three.core.js',
+  THREE_BASE + 'addons/loaders/GLTFLoader.js',
+  THREE_BASE + 'addons/loaders/DRACOLoader.js',
+  THREE_BASE + 'addons/controls/OrbitControls.js',
+  THREE_BASE + 'addons/libs/meshopt_decoder.module.js',
+  THREE_BASE + 'addons/utils/BufferGeometryUtils.js',
 ];
 
 self.addEventListener('install', (event) => {
@@ -75,10 +74,10 @@ self.addEventListener('fetch', (event) => {
 
   if(sameOrigin && (req.mode === 'navigate' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/manifest.json'))){
     event.respondWith(networkFirst(req));
-  }else if(url.hostname === 'cdn.jsdelivr.net'){
-    event.respondWith(cacheFirst(req));
-  }else if(url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com'
-        || (sameOrigin && url.pathname.includes('/presets/'))){
+  }else if(url.hostname === 'fonts.gstatic.com'){
+    event.respondWith(cacheFirst(req));   // フォント本体はURLごとに内容が固定
+  }else if(url.hostname === 'fonts.googleapis.com'
+        || (sameOrigin && (url.pathname.includes('/presets/') || url.pathname.includes('/vendor/')))){
     event.respondWith(staleWhileRevalidate(req, event));
   }
 });

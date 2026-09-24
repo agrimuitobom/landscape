@@ -411,8 +411,10 @@
       <tr><td>スティック 左右</td><td>指している物を回転</td></tr>
       <tr><td>スティック 上下</td><td>⬍根入れモード（初期）: 下で沈める・上で持ち上げる。地表と「1/3根入れ」で一旦止まる<br>⤢拡縮モード: 大きさを変える（MR中の上部ボタンで切替）</td></tr>
       <tr><td>グリップ（物に向けて）</td><td>その物を削除</td></tr>
-      <tr><td>A / X ボタン</td><td>指している物を複製</td></tr>
-      <tr><td>B / Y ボタン</td><td>直前の操作を元に戻す</td></tr>
+      <tr><td>A / B ボタン（右手）</td><td>設置する素材を次へ / 前へ切り替え</td></tr>
+      <tr><td>右スティック押し込み</td><td>スティック上下の役割を 根入れ ⇔ 大きさ で切り替え</td></tr>
+      <tr><td>X ボタン（左手）</td><td>タップ＝指している物（選択中の物）を複製／長押し＝全削除</td></tr>
+      <tr><td>Y ボタン（左手）</td><td>タップ＝直前の操作を元に戻す／長押し＝MRを終了</td></tr>
       <tr><td>上部の素材ボタン（MR中）</td><td>サムネイル一覧から置く素材を選ぶ（石・樹木などで絞り込み）</td></tr>
       <tr><td>選択中の物のバー（MR中・画面下）</td><td>最後に置いた／つかんだ物を ↺↻15°回転・▼▲5cm根入れ・複製・削除</td></tr>
       <tr><td>ハンドトラッキング</td><td>親指と人差し指でつまむ＝トリガー（設置・つかむ・ボタン操作）。回転や根入れは画面下のバーで</td></tr>
@@ -421,6 +423,7 @@
 
     <p class="note">
       ※ Quest本体のブラウザで開いてください（HTTPS必須・GitHub Pages推奨）。<br>
+      ※ Questのブラウザは画面上のボタン表示（dom-overlay）に対応していないため、MR中は目の前の案内板（HUD）とコントローラーのボタンで操作します。季節・日当たり・成長年数・案の切り替えは、MR開始前にこの画面で設定してください。「地面の起伏の記録」「北合わせ」は現在、画面上のボタンが使える端末でのみ操作できます。<br>
       ※ Questにダウンロードした .glb は「GLBファイルを追加」から読み込めます。<br>
       ※ スキャンは Scaniverse / Polycam 等でGLB書き出し。1個あたり10万ポリゴン以下推奨。<br>
       ※ 全員に共通の「リアル素材」は、リポジトリの presets/ フォルダにGLBを置いて登録します（手順は presets/README.md）。<br>
@@ -493,7 +496,7 @@
     <button data-o="desel" title="選択を解除">✕</button>
   </div>
   <div id="xr-toast"></div>
-  <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝根入れ（⤢で大きさ）　・　グリップ＝削除　・　A/X＝複製　B/Y＝戻す</div>
+  <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝根入れ（⤢で大きさ）　・　グリップ＝削除　・　右A/B＝素材切替　左X＝複製　左Y＝戻す</div>
 </div>
 
 <!-- 起動ウォッチドッグ: ライブラリ読込失敗を画面に表示する -->
@@ -501,23 +504,31 @@
 (function(){
   var el = function(){ return document.getElementById('support'); };
   window.__bootError = function(msg){
-    var s = el(); if(!s || window.__appReady) return;
+    var s = el(); if(!s || window.__appReady || window.__bootErrorShown) return;
+    window.__bootErrorShown = true;   // 最初のエラー（根本原因）を後続で上書きしない
     s.className = 'ng';
     s.innerHTML =
       '✕ アプリの起動に失敗しました。<br>' +
       (msg ? '（' + msg + '）<br>' : '') +
       '・チャット内プレビューでは動きません。<b>GitHub Pagesにアップして</b>そのURLを開いてください。<br>' +
       '・file:// で直接開いている場合もWebXRは動きません（HTTPS必須）。<br>' +
-      '・ネットワークで cdn.jsdelivr.net がブロックされていないか確認してください。';
+      '・index.html と一緒に <b>vendor フォルダもアップロード</b>されているか確認してください。<br>' +
+      '・ブラウザのアップデートがある場合は更新してから再読み込みしてください。';
   };
   window.addEventListener('error', function(e){
     if(!window.__appReady) window.__bootError(e.message || 'スクリプトエラー');
   }, true);
+  window.addEventListener('unhandledrejection', function(e){
+    if(!window.__appReady) window.__bootError((e.reason && e.reason.message) || '初期化中のエラー');
+  });
   setTimeout(function(){
-    if(!window.__appReady) window.__bootError('3Dライブラリの読み込みがタイムアウトしました');
+    if(!window.__appReady) window.__bootError('アプリの初期化がタイムアウトしました');
   }, 12000);
   if(location.protocol === 'file:'){
     window.__bootError('file:// で開かれています');
+  }
+  if(!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('importmap'))){
+    window.__bootError('このブラウザは import maps に非対応です。ブラウザを最新版に更新してください');
   }
 })();
 </script>
@@ -525,8 +536,8 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
   }
 }
 </script>
@@ -539,7 +550,6 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
-window.__appReady = true;   // ここまで来ればライブラリ読込は成功
 
 /* オフライン対応: 一度開けば、電波のない庭でも起動できるように Service Worker でキャッシュする */
 const offlineEl = document.getElementById('offline-status');
@@ -1056,7 +1066,7 @@ function makeLawn(){
 
 const loader = new GLTFLoader();
 const draco = new DRACOLoader();
-draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/libs/draco/');
+draco.setDecoderPath('./vendor/three/addons/libs/draco/');
 loader.setDRACOLoader(draco);
 loader.setMeshoptDecoder(MeshoptDecoder);   // gltf-transform で軽量化したGLB用
 
@@ -1403,24 +1413,42 @@ occlusionOpt.addEventListener('change', () => {
 });
 let xrSupported = false;
 
+function setSupport(text, cls){
+  supportEl.textContent = text;
+  supportEl.className = cls;
+}
+
 if(navigator.xr){
+  let settled = false;
+  // isSessionSupported が応答しない環境があるため、待ちすぎたら試行可能にして進める
+  const watchdog = setTimeout(() => {
+    if(settled) return;
+    settled = true;
+    xrSupported = true;
+    startBtn.disabled = false;
+    setSupport('△ MR対応の確認が完了しませんでした。「MRで開始」で直接試せます。進まない場合はブラウザを最新に更新し、Questを再起動してください。', 'ng');
+  }, 8000);
   navigator.xr.isSessionSupported('immersive-ar').then(ok => {
+    if(settled) return;
+    settled = true;
+    clearTimeout(watchdog);
     xrSupported = ok;
     if(ok){
-      supportEl.textContent = '✔ このブラウザはMR（immersive-ar）に対応しています。';
-      supportEl.className = 'ok';
+      setSupport('✔ このブラウザはMR（immersive-ar）に対応しています。', 'ok');
       startBtn.disabled = false;
     }else{
-      supportEl.textContent = '✕ immersive-ar 非対応です。Meta Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）';
-      supportEl.className = 'ng';
+      setSupport('✕ immersive-ar 非対応です。Meta Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）', 'ng');
     }
   }).catch(() => {
-    supportEl.textContent = '✕ WebXRの確認に失敗しました。Quest本体のブラウザ＋HTTPSで開いてください。（このPCではプレビューのみ可能）';
-    supportEl.className = 'ng';
+    if(settled) return;
+    settled = true;
+    clearTimeout(watchdog);
+    xrSupported = true;   // 確認に失敗しただけの可能性があるので試行は許可する
+    startBtn.disabled = false;
+    setSupport('△ WebXRの確認に失敗しました。「MRで開始」で直接試せます。Quest本体のブラウザ＋HTTPSで開いているか確認してください。', 'ng');
   });
 }else{
-  supportEl.textContent = '✕ WebXR非対応ブラウザです。Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）';
-  supportEl.className = 'ng';
+  setSupport('✕ WebXR非対応ブラウザです。Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）', 'ng');
 }
 
 const launcher = document.getElementById('launcher');
@@ -1462,7 +1490,14 @@ startBtn.addEventListener('click', async () => {
 
 renderer.xr.addEventListener('sessionstart', () => {
   launcher.style.display = 'none';
-  xrOverlay.classList.add('on');
+  /* dom-overlay が実際に有効になったときだけHTML製UIを使う。
+     Meta Quest のブラウザは非対応なので、代わりに3D HUDとコントローラーのボタンで操作する */
+  const domOverlayActive = !!(xrSession && xrSession.domOverlayState && xrSession.domOverlayState.type);
+  if(domOverlayActive) xrOverlay.classList.add('on');
+  hudActive = !domOverlayActive;
+  hud.visible = hudActive;
+  hudSnap = true;
+  hudDirty = true;
   refreshPreviewGround();
   if(previewObj){ scene.remove(previewObj); previewObj = null; }
   renderer.setClearColor(0x000000, 0);   // パススルー
@@ -1510,7 +1545,9 @@ renderer.xr.addEventListener('sessionend', () => {
   measurePts.length = 0;
   measureGroup.clear();
   updateModeChip();
-  btnPrev.clear();
+  btnState.clear();
+  hud.visible = false;
+  hudActive = false;
   saveLayoutNow();
   refreshPreview();
 });
@@ -2404,19 +2441,126 @@ function duplicateTarget(t = grabbed || hovered || selectedObj){
   toast(`${t.userData.modelName || ''} を複製しました`);
 }
 
-/* A/X=複製, B/Y=アンドゥ (押した瞬間のみ反応) */
-const btnPrev = new Map();
+/* ---------- コントローラーのボタン ----------
+   Quest では画面上のボタン(dom-overlay)が使えないため、主な操作をボタンに割り当てる。
+   右A/B=素材の次/前・右スティック押し込み=根入れ⇔拡縮
+   左X=タップで複製/長押しで全削除・左Y=タップで元に戻す/長押しでMR終了 */
+const HOLD_MS = 1200;
+const btnState = new Map();   // XRInputSource -> 押下状態
 function pollButtons(){
   if(!xrSession) return;
+  const now = performance.now();
   for(const src of xrSession.inputSources){
     const gp = src.gamepad;
     if(!gp || !gp.buttons || gp.buttons.length < 6) continue;
-    const a = !!gp.buttons[4]?.pressed, b = !!gp.buttons[5]?.pressed;
-    const prev = btnPrev.get(src) || [false, false];
-    if(a && !prev[0]) duplicateTarget();
-    if(b && !prev[1]) undo();
-    btnPrev.set(src, [a, b]);
+    let st = btnState.get(src);
+    if(!st){ st = { b3:false, b4:false, b5:false, hold4:0, hold5:0, fired4:false, fired5:false }; btnState.set(src, st); }
+    const b3 = !!(gp.buttons[3] && gp.buttons[3].pressed);   // スティック押し込み
+    const b4 = !!(gp.buttons[4] && gp.buttons[4].pressed);   // A / X
+    const b5 = !!(gp.buttons[5] && gp.buttons[5].pressed);   // B / Y
+    if(src.handedness === 'left'){
+      if(b4 && !st.b4){ st.hold4 = now; st.fired4 = false; }
+      if(b4 && !st.fired4 && now - st.hold4 > HOLD_MS){ st.fired4 = true; clearAllPlaced(); }
+      if(!b4 && st.b4 && !st.fired4) duplicateTarget();
+      if(b5 && !st.b5){ st.hold5 = now; st.fired5 = false; }
+      if(b5 && !st.fired5 && now - st.hold5 > HOLD_MS){ st.fired5 = true; xrSession.end(); return; }
+      if(!b5 && st.b5 && !st.fired5) undo();
+    }else{
+      if(b4 && !st.b4) cycleModel(1);
+      if(b5 && !st.b5) cycleModel(-1);
+      if(b3 && !st.b3) toggleStickMode();
+    }
+    st.b3 = b3; st.b4 = b4; st.b5 = b5;
   }
+}
+
+/* ---------- XR内HUD(dom-overlay 非対応ブラウザ = Meta Quest 用) ----------
+   視線の少し下に追従する板に、選択中の素材・指している物の情報・操作方法・通知を描く */
+let hudActive = false, hudSnap = false, hudDirty = true;
+let hudToastMsg = '', hudToastUntil = 0;
+const hud = makeHUD();
+hud.visible = false;
+scene.add(hud);
+const hudCamPos = new THREE.Vector3(), hudFwd = new THREE.Vector3(), hudTarget = new THREE.Vector3();
+
+function makeHUD(){
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 420;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.56, 0.56 * canvas.height / canvas.width),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false })
+  );
+  mesh.renderOrder = 999;
+  mesh.userData.canvas = canvas;
+  mesh.userData.tex = tex;
+  return mesh;
+}
+function roundRectPath(g, x, y, w, h, r){
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+function fitText(g, text, maxW){
+  let t = text;
+  while(g.measureText(t).width > maxW && t.length > 2) t = t.slice(0, -2) + '…';
+  return t;
+}
+function drawHUD(){
+  const canvas = hud.userData.canvas;
+  const g = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height, F = '"Zen Kaku Gothic New", sans-serif';
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = 'rgba(35,39,31,0.82)';
+  roundRectPath(g, 0, 0, W, H - 80, 40); g.fill();
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+
+  const m = models[activeIndex];
+  const w = modelWeight(m);
+  g.fillStyle = '#EAE7DC';
+  g.font = `bold 52px ${F}`;
+  g.fillText(fitText(g, `◀B　${m ? m.name : '—'}　A▶`, W - 60), W/2, 74);
+  const { n, t, stones } = placedTotals();
+  g.font = `30px ${F}`;
+  g.fillStyle = 'rgba(234,231,220,0.85)';
+  g.fillText(fitText(g, `${m ? fmtDims(m.size) : '—'}${w != null ? '・' + fmtWeight(w) : ''}　／　設置${n}個${stones ? `・石${fmtWeight(t)}` : ''}${plans ? '・' + currentPlan().name : ''}`, W - 60), W/2, 126);
+  // 指している物の情報(寸法・根入れ・重量など)
+  g.font = `bold 32px ${F}`;
+  g.fillStyle = lastTargetText ? '#C9D8B8' : 'rgba(234,231,220,0.45)';
+  g.fillText(fitText(g, lastTargetText || '物に向けると寸法・根入れ・重量を表示', W - 60), W/2, 180);
+  g.font = `25px ${F}`;
+  g.fillStyle = 'rgba(234,231,220,0.66)';
+  g.fillText(`トリガー＝設置／つかむ　グリップ＝削除　スティック左右＝回転・上下＝${scaleLocked ? '根入れ' : '大きさ'}`, W/2, 232);
+  g.fillText('右A/B＝素材切替　右スティック押込＝根入れ⇔大きさ', W/2, 272);
+  g.fillText(`左X＝複製（長押し：全削除）　左Y＝戻す（長押し：終了）`, W/2, 312);
+
+  if(hudToastMsg && performance.now() < hudToastUntil){
+    g.font = `bold 32px ${F}`;
+    const tw = Math.min(W - 40, g.measureText(hudToastMsg).width + 70);
+    g.fillStyle = 'rgba(95,112,82,0.95)';
+    roundRectPath(g, (W - tw) / 2, H - 66, tw, 58, 29); g.fill();
+    g.fillStyle = '#EAE7DC';
+    g.fillText(fitText(g, hudToastMsg, tw - 40), W/2, H - 26);
+  }
+  hud.userData.tex.needsUpdate = true;
+}
+function updateHUD(){
+  if(!hudActive) return;
+  if(hudToastMsg && performance.now() > hudToastUntil){ hudToastMsg = ''; hudDirty = true; }
+  if(hudDirty){ drawHUD(); hudDirty = false; }
+  const cam = renderer.xr.getCamera();
+  hudCamPos.setFromMatrixPosition(cam.matrixWorld);
+  hudFwd.set(0, 0, -1).transformDirection(cam.matrixWorld);
+  hudTarget.copy(hudCamPos).addScaledVector(hudFwd, 1.15);
+  hudTarget.y -= 0.22;
+  if(hudSnap){ hud.position.copy(hudTarget); hudSnap = false; }
+  else hud.position.lerp(hudTarget, 0.08);
+  hud.lookAt(hudCamPos);
 }
 
 /* ---------- 操作 ---------- */
@@ -2556,6 +2700,7 @@ function refreshXRLabel(){
   xrModelEl.textContent = m ? m.name : '—';
   xrDimsEl.textContent  = m ? fmtDims(m.size) : '—';
   document.getElementById('xr-model-thumb').src = (m && m.thumb) || '';
+  hudDirty = true;
 }
 /* 設置物の個数と、石(重量が出せるもの)の合計重量 */
 function placedTotals(){
@@ -2569,6 +2714,7 @@ function placedTotals(){
 function updateCount(){
   const { n, t, stones } = placedTotals();
   xrCountEl.textContent = n + '個' + (stones ? `・石${fmtWeight(t)}` : '');
+  hudDirty = true;
 }
 
 /* スティック上下の役割切替: 根入れ(実寸ロック) / 拡縮 */
@@ -2577,12 +2723,14 @@ function refreshLockBtn(){
   lockBtn.textContent = scaleLocked ? '⬍根入れ' : '⤢拡縮';
   lockBtn.classList.toggle('unlocked', !scaleLocked);
 }
-lockBtn.addEventListener('click', () => {
+function toggleStickMode(){
   scaleLocked = !scaleLocked;
   refreshLockBtn();
   refreshObjBar();
+  hudDirty = true;
   toast(scaleLocked ? 'スティック上下＝根入れ（大きさは実寸で固定）' : 'スティック上下＝大きさ（実寸ロック解除）');
-});
+}
+lockBtn.addEventListener('click', toggleStickMode);
 refreshLockBtn();
 
 /* 指している/つかんでいる物の実寸・倍率表示 */
@@ -2594,7 +2742,7 @@ function updateTargetInfo(){
   const target = grabbed || hovered || selectedObj;
   currentTarget = target;
   if(!target){
-    if(lastTargetText){ lastTargetText = ''; xrTargetEl.classList.remove('on'); }
+    if(lastTargetText){ lastTargetText = ''; xrTargetEl.classList.remove('on'); hudDirty = true; }
     return;
   }
   const base = target.userData.baseSize;
@@ -2613,6 +2761,7 @@ function updateTargetInfo(){
   const text = `${target.userData.modelName || ''}　${dims}${growNote}${sinkNote}${weightNote}${scaleNote}`;
   if(text !== lastTargetText){
     lastTargetText = text;
+    hudDirty = true;
     xrTargetEl.textContent = text;
     xrTargetEl.classList.add('on');
   }
@@ -2633,6 +2782,23 @@ function toast(msg){
   toastEl.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+  hudToastMsg = msg;
+  hudToastUntil = performance.now() + 1800;
+  hudDirty = true;
+}
+function cycleModel(dir){
+  if(!models.length) return;
+  activeIndex = (activeIndex + dir + models.length) % models.length;
+  refreshXRLabel(); refreshLibraryUI();
+  toast(models[activeIndex].name);
+}
+function clearAllPlaced(){
+  if(placedGroup.children.length) pushUndo();
+  clearPlaced();
+  hovered = null; grabbed = null;
+  updateCount();
+  saveLayoutNow();
+  toast('すべて削除しました（「戻す」で元に戻せます）');
 }
 document.getElementById('xr-exit').addEventListener('click', () => {
   if(xrSession) xrSession.end();
@@ -2715,13 +2881,8 @@ menuPanel.addEventListener('click', (e) => {
     }
     clearArmedUntil = 0;
     b.classList.remove('confirm'); b.textContent = '🗑 全削除';
-    if(placedGroup.children.length) pushUndo();
-    clearPlaced();
-    hovered = null; grabbed = null;
-    updateCount();
-    saveLayoutNow();
     closeXRPanels();
-    toast('すべて削除しました（「戻す」で元に戻せます）');
+    clearAllPlaced();
   }
 });
 
@@ -3185,6 +3346,8 @@ addModel('石灯籠',        makeLantern(), { preset:true, kind:'andesite' });
 updateLayoutStatus();
 applySun();
 rebuildTerrain();
+
+window.__appReady = true;   // 初期化が最後まで到達した時点で起動成功とみなす
 /* リアル素材 → 保存済みGLB → 配置レイアウト の順で復元(配置がこれらのモデルを参照するため) */
 loadManifestPresets().then(restoreSavedGLBs).then(loadSavedLayout)
   .then(() => { thumbsReady = true; scheduleThumbs(); });
@@ -3196,7 +3359,7 @@ if(new URLSearchParams(location.search).has('debug')){
                        sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun,
                        setGrowYears, growthFactor, setGroundPts, terrainHeight, setTerrainShown, updateClipPlanes, floorPointFor,
                        switchPlan, newPlan, getPlans: () => plans, ghostGroup, renderPlanImage, refreshPalette, updateModeChip, setSelected, refreshObjBar,
-                       getSelected: () => selectedObj };
+                       getSelected: () => selectedObj, drawHUD, hud };
 }
 
 /* ================= メインループ ================= */
@@ -3248,6 +3411,7 @@ renderer.setAnimationLoop((t, frame) => {
 
     pollThumbsticks(dt);
     pollButtons();
+    updateHUD();
     updateTargetInfo();
 
     /* 影の範囲をユーザーに追従させる(広い庭でも近くの影が切れないように) */
