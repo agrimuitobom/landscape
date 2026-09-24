@@ -203,6 +203,29 @@
     font-size:11.5px; letter-spacing:.04em;
     padding:8px 16px; border-radius:30px; white-space:nowrap;
   }
+  #xr-sun-panel{
+    pointer-events:auto; display:none;
+    position:absolute; top:74px; right:16px; width:280px;
+    background:rgba(35,39,31,.86); color:var(--washi);
+    border-radius:14px; padding:12px 14px; font-size:13px;
+  }
+  #xr-sun-panel.on{ display:block; }
+  #xr-sun-panel .sp-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; }
+  #xr-sun-panel .sp-row span{ flex:1; text-align:center; font-weight:700; font-size:15px; }
+  #xr-sun-panel button{
+    font-family:inherit; font-size:13px; font-weight:700; cursor:pointer;
+    border:none; border-radius:20px; padding:8px 12px;
+    background:rgba(234,231,220,.16); color:var(--washi);
+  }
+  #xr-sun-panel button:active{ background:var(--moss); }
+  #xr-sun-panel .sp-info{ white-space:pre-line; font-size:11.5px; opacity:.85; line-height:1.6; margin:4px 0 8px; text-align:center; }
+  .sun-row{ display:flex; align-items:center; gap:10px; }
+  .sun-row select{
+    font-family:inherit; font-size:13px; padding:6px 6px; border:1px solid var(--line);
+    border-radius:5px; background:rgba(255,255,255,.5); color:var(--ink);
+  }
+  .sun-row input[type=range]{ flex:1; accent-color:var(--moss-deep); }
+  .sun-val{ font-size:13px; font-weight:700; min-width:42px; text-align:right; }
   #xr-toast{
     position:absolute; bottom:60px; left:50%; transform:translateX(-50%);
     background:rgba(95,112,82,.9); color:var(--washi);
@@ -262,6 +285,23 @@
 
     <button id="start-btn" disabled>MRで開始</button>
 
+    <h2>日当たり</h2>
+    <div class="sun-row">
+      <select id="sun-month" aria-label="月"></select>
+      <input type="range" id="sun-hour" min="4" max="20" step="0.5" aria-label="時刻">
+      <span id="sun-hour-label" class="sun-val">—</span>
+    </div>
+    <p class="layout-status" id="sun-info">—</p>
+    <div class="btn-row">
+      <button class="ghost" id="sun-now-btn">現在の日時</button>
+      <button class="ghost" id="sun-geo-btn">現在地を使う</button>
+    </div>
+    <p class="note" style="margin-top:8px">
+      場所: <span id="sun-place">—</span><br>
+      ※ MR中に「☀日当たり」→「北を合わせる」で北の方角を一度設定すると、実際の方角どおりに影が落ちます。<br>
+      ※ 影を落とすのは配置した物だけです（建物・既存の木の影は含みません）。
+    </p>
+
     <h2>操作方法</h2>
     <table class="controls">
       <tr><td>トリガー（床に向けて）</td><td>選択中のモデルを設置</td></tr>
@@ -297,11 +337,22 @@
     <span id="xr-count">0個</span>
     <button id="xr-lock">⬍根入れ</button>
     <button id="xr-measure">📐計測</button>
+    <button id="xr-sun">☀日当たり</button>
     <button id="xr-undo">戻す</button>
     <button id="xr-clear" class="warn">全削除</button>
     <button id="xr-exit">終了</button>
   </div>
   <div id="xr-target"></div>
+  <div id="xr-sun-panel">
+    <div class="sp-row"><button data-sun="month-">◀</button><span id="xr-sun-month">—</span><button data-sun="month+">▶</button></div>
+    <div class="sp-row"><button data-sun="hour-">◀</button><span id="xr-sun-hour">—</span><button data-sun="hour+">▶</button></div>
+    <div class="sp-info" id="xr-sun-info">—</div>
+    <div class="sp-row">
+      <button data-sun="play">▶ 1日の影</button>
+      <button data-sun="now">現在</button>
+      <button data-sun="north">北を合わせる</button>
+    </div>
+  </div>
   <div id="xr-toast"></div>
   <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝根入れ（⤢で大きさ）　・　グリップ＝削除　・　A/X＝複製　B/Y＝戻す</div>
 </div>
@@ -1237,8 +1288,7 @@ renderer.xr.addEventListener('sessionend', () => {
   anchorRoot.quaternion.identity();
   shadowGround.visible = false;
   shadowGround.position.set(0, 0, 0);
-  sun.position.set(2, 4, 1.5);
-  sun.target.position.set(0, 0, 0);
+  northMode = false;
   lastTargetText = ''; currentTarget = null;
   xrTargetEl.classList.remove('on');
   measureMode = false;
@@ -1691,6 +1741,7 @@ function pollButtons(){
 function onSelectStart(c){
   if(!renderer.xr.isPresenting) return;
   activeController = c;
+  if(northMode){ northMode = false; c.userData.placeOnRelease = false; setNorthFrom(c); return; }
   if(measureMode){ addMeasurePoint(c); return; }
   const obj = objectUnderRay(c);
   if(obj){
@@ -1923,6 +1974,179 @@ document.getElementById('xr-exit').addEventListener('click', () => {
   if(xrSession) xrSession.end();
 });
 
+/* ================= 日当たり(太陽の位置と影) ================= */
+const LS_SUN = 'sekitei.sun.v1';
+const LS_NORTH = 'sekitei.north.v1';
+
+/* 太陽の方位(北=0°・時計回り)と高度(°)。NOAA の近似式、誤差は1°程度 */
+function sunPosition(year, month, day, hour, lat, lon, tz){
+  const rad = Math.PI / 180;
+  const N = Math.round((Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 1)) / 864e5) + 1;
+  const g = 2 * Math.PI / 365 * (N - 1 + (hour - 12) / 24);
+  const eqt = 229.18 * (0.000075 + 0.001868*Math.cos(g) - 0.032077*Math.sin(g) - 0.014615*Math.cos(2*g) - 0.040849*Math.sin(2*g));
+  const decl = 0.006918 - 0.399912*Math.cos(g) + 0.070257*Math.sin(g) - 0.006758*Math.cos(2*g)
+             + 0.000907*Math.sin(2*g) - 0.002697*Math.cos(3*g) + 0.00148*Math.sin(3*g);
+  const ha = ((hour * 60 + eqt + 4 * lon - 60 * tz) / 4 - 180) * rad;
+  const phi = lat * rad;
+  const cosZ = Math.sin(phi)*Math.sin(decl) + Math.cos(phi)*Math.cos(decl)*Math.cos(ha);
+  const el = 90 - Math.acos(THREE.MathUtils.clamp(cosZ, -1, 1)) / rad;
+  const azS = Math.atan2(Math.sin(ha), Math.cos(ha)*Math.sin(phi) - Math.tan(decl)*Math.cos(phi)) / rad;
+  return { az: (azS + 540) % 360, el };
+}
+
+const sunState = (() => {
+  const d = new Date();
+  const st = { month: d.getMonth() + 1, day: d.getDate(), hour: Math.round((d.getHours() + d.getMinutes()/60) * 2) / 2,
+               lat: 35.68, lon: 139.77, place: '東京（初期値）' };
+  try{ Object.assign(st, JSON.parse(localStorage.getItem(LS_SUN) || '{}')); }catch(err){}
+  st.hour = THREE.MathUtils.clamp(st.hour, 4, 20);
+  return st;
+})();
+function saveSunState(){ try{ localStorage.setItem(LS_SUN, JSON.stringify(sunState)); }catch(err){} }
+
+/* 北の向き: 設置物の座標系(=空間アンカー基準)での水平ベクトル [x, z]。未設定なら -Z を北とみなす */
+let northVec = null;
+try{ northVec = JSON.parse(localStorage.getItem(LS_NORTH) || 'null'); }catch(err){}
+let northMode = false;
+
+const sunDirLocal = new THREE.Vector3(0.45, 0.8, 0.35).normalize();
+const sunDirWorld = new THREE.Vector3();
+let sunEl = 45;
+const DIR8 = ['北', '北東', '東', '南東', '南', '南西', '西', '北西'];
+const fmtHour = (h) => `${Math.floor(h)}:${h % 1 ? '30' : '00'}`;
+const tzOf = (m, d) => -new Date(new Date().getFullYear(), m - 1, d, 12).getTimezoneOffset() / 60;
+
+function sunAt(hour){
+  const y = new Date().getFullYear();
+  return sunPosition(y, sunState.month, sunState.day, hour, sunState.lat, sunState.lon, tzOf(sunState.month, sunState.day));
+}
+
+/* 日の出・日の入(暦と同じく太陽上端+大気差 = 高度-0.833° を1分刻みで探す) */
+function sunTimes(){
+  const H = -0.833;
+  let rise = null, set = null, prev = sunAt(0).el;
+  for(let m=1; m<=24*60; m++){
+    const el = sunAt(m / 60).el;
+    if(prev < H && el >= H && rise == null) rise = m / 60;
+    if(prev >= H && el < H) set = m / 60;
+    prev = el;
+  }
+  const f = (h) => h == null ? '—' : `${Math.floor(h)}:${String(Math.round(h % 1 * 60)).padStart(2, '0')}`;
+  return `日の出 ${f(rise)}・日の入 ${f(set)}`;
+}
+
+function applySun(){
+  const { az, el } = sunAt(sunState.hour);
+  sunEl = el;
+  const N = new THREE.Vector3(northVec ? northVec[0] : 0, 0, northVec ? northVec[1] : -1).normalize();
+  const E = new THREE.Vector3().crossVectors(N, new THREE.Vector3(0, 1, 0));   // 北×上 = 東
+  const a = az * Math.PI / 180, e = Math.max(el, 2) * Math.PI / 180;
+  sunDirLocal.copy(N).multiplyScalar(Math.cos(a)).addScaledVector(E, Math.sin(a))
+    .multiplyScalar(Math.cos(e)).setY(Math.sin(e)).normalize();
+  // 高度が低いほど弱く・暖色に。日没後は影なし
+  const k = THREE.MathUtils.smoothstep(el, -1, 12);
+  sun.intensity = 1.9 * k;
+  sun.castShadow = el > 0;
+  sun.color.setHSL(0.09, THREE.MathUtils.lerp(0.75, 0.25, THREE.MathUtils.smoothstep(el, 5, 35)), 0.93);
+  refreshSunUI(az, el);
+}
+
+function refreshSunUI(az, el){
+  const dateText = `${sunState.month}月${sunState.day}日`;
+  const info = el > 0
+    ? `太陽 高度${Math.round(el)}°・方位 ${DIR8[Math.round(az / 45) % 8]}（${Math.round(az)}°）`
+    : (sunState.hour < 12 ? '日の出前（影なし）' : '日没後（影なし）');
+  document.getElementById('sun-hour-label').textContent = fmtHour(sunState.hour);
+  document.getElementById('sun-month').value = String(sunState.month);
+  document.getElementById('sun-hour').value = String(sunState.hour);
+  document.getElementById('sun-info').textContent = `${dateText} ${fmtHour(sunState.hour)} — ${info}　${sunTimes()}`;
+  document.getElementById('sun-place').textContent = `${sunState.place}（緯度${sunState.lat.toFixed(2)}・経度${sunState.lon.toFixed(2)}）`;
+  document.getElementById('xr-sun-month').textContent = dateText;
+  document.getElementById('xr-sun-hour').textContent = fmtHour(sunState.hour);
+  document.getElementById('xr-sun-info').textContent = `${info}\n${sunTimes()}${northVec ? '' : '\n※ 北が未設定です'}`;
+}
+
+/* 毎フレーム: 太陽方向をアンカーの向きに合わせてワールドへ。影の範囲は見ている位置に追従 */
+function updateSunLight(center){
+  sunDirWorld.copy(sunDirLocal).applyQuaternion(anchorRoot.quaternion);
+  sun.target.position.set(center.x, 0, center.z);
+  sun.position.copy(sun.target.position).addScaledVector(sunDirWorld, 8);
+}
+
+function setSunHour(h){ sunState.hour = THREE.MathUtils.clamp(h, 4, 20); saveSunState(); applySun(); }
+function setSunMonth(m){
+  sunState.month = ((m - 1 + 12) % 12) + 1;
+  sunState.day = Math.min(sunState.day, new Date(new Date().getFullYear(), sunState.month, 0).getDate());
+  saveSunState(); applySun();
+}
+function setSunNow(){
+  const d = new Date();
+  sunState.month = d.getMonth() + 1; sunState.day = d.getDate();
+  setSunHour(Math.round((d.getHours() + d.getMinutes()/60) * 2) / 2);
+}
+
+/* 1日の影の動きを再生(5:00→19:00 を約14秒) */
+let sunPlayTimer = null;
+function toggleSunPlay(){
+  if(sunPlayTimer){ clearInterval(sunPlayTimer); sunPlayTimer = null; return; }
+  setSunHour(5);
+  sunPlayTimer = setInterval(() => {
+    if(sunState.hour >= 19){ clearInterval(sunPlayTimer); sunPlayTimer = null; return; }
+    setSunHour(sunState.hour + 0.5);
+  }, 500);
+}
+
+/* 北合わせ: 次のトリガーで、コントローラーの向き(水平成分)を北として記録 */
+function setNorthFrom(c){
+  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(c.getWorldQuaternion(new THREE.Quaternion()));
+  dir.applyQuaternion(anchorRoot.quaternion.clone().invert());   // アンカー基準へ
+  dir.y = 0;
+  if(dir.lengthSq() < 1e-4){ toast('水平に近い向きで北を指してください'); return; }
+  dir.normalize();
+  northVec = [dir.x, dir.z];
+  try{ localStorage.setItem(LS_NORTH, JSON.stringify(northVec)); }catch(err){}
+  applySun();
+  toast('北を設定しました — 影が実際の方角になります');
+}
+
+/* ランチャー側の操作 */
+const sunMonthEl = document.getElementById('sun-month');
+for(let m=1; m<=12; m++) sunMonthEl.add(new Option(`${m}月`, String(m)));
+sunMonthEl.addEventListener('change', () => setSunMonth(Number(sunMonthEl.value)));
+document.getElementById('sun-hour').addEventListener('input', (e) => setSunHour(Number(e.target.value)));
+document.getElementById('sun-now-btn').addEventListener('click', setSunNow);
+document.getElementById('sun-geo-btn').addEventListener('click', () => {
+  if(!navigator.geolocation){ alert('この端末では現在地を取得できません'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    sunState.lat = pos.coords.latitude; sunState.lon = pos.coords.longitude; sunState.place = '現在地';
+    saveSunState(); applySun();
+  }, err => alert('現在地を取得できませんでした: ' + err.message), { timeout: 10000 });
+});
+
+/* MR側の操作 */
+const sunPanel = document.getElementById('xr-sun-panel');
+const sunBtn = document.getElementById('xr-sun');
+sunBtn.addEventListener('click', () => {
+  sunPanel.classList.toggle('on');
+  sunBtn.classList.toggle('active-mode', sunPanel.classList.contains('on'));
+});
+sunPanel.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-sun]');
+  if(!b) return;
+  const act = b.dataset.sun;
+  if(act === 'month-') setSunMonth(sunState.month - 1);
+  if(act === 'month+') setSunMonth(sunState.month + 1);
+  if(act === 'hour-') setSunHour(sunState.hour - 0.5);
+  if(act === 'hour+') setSunHour(sunState.hour + 0.5);
+  if(act === 'now') setSunNow();
+  if(act === 'play') toggleSunPlay();
+  if(act === 'north'){
+    northMode = true;
+    sunPanel.classList.remove('on'); sunBtn.classList.remove('active-mode');
+    toast('北の方角にコントローラーを向けてトリガー');
+  }
+});
+
 /* ================= 起動シーケンス ================= */
 /* プリセット登録(参照するUI要素の宣言より後に実行する必要がある) */
 addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true, density:DEFAULT_DENSITY });
@@ -1942,13 +2166,15 @@ addModel('砂利敷き（2×2m）', makeGravel(), { preset:true, lift:0.006 });
 addModel('芝生（2m円）',  makeLawn(),    { preset:true, lift:0.005 });
 addModel('石灯籠',        makeLantern(), { preset:true, density:DEFAULT_DENSITY });
 updateLayoutStatus();
+applySun();
 /* リアル素材 → 保存済みGLB → 配置レイアウト の順で復元(配置がこれらのモデルを参照するため) */
 loadManifestPresets().then(restoreSavedGLBs).then(loadSavedLayout);
 
 /* 動作確認用(URLに ?debug を付けたときだけ公開) */
 if(new URLSearchParams(location.search).has('debug')){
   window.__sekitei = { THREE, scene, camera, controls, models, placedGroup, previewGround,
-                       adjustSink, serializeLayout, placedTotals, modelWeight };
+                       adjustSink, serializeLayout, placedTotals, modelWeight,
+                       sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun };
 }
 
 /* ================= メインループ ================= */
@@ -2002,12 +2228,12 @@ renderer.setAnimationLoop((t, frame) => {
 
     /* 影の範囲をユーザーに追従させる(広い庭でも近くの影が切れないように) */
     const xrCam = renderer.xr.getCamera();
-    sun.position.set(xrCam.position.x + 2, 4, xrCam.position.z + 1.5);
-    sun.target.position.set(xrCam.position.x, 0, xrCam.position.z);
+    updateSunLight(xrCam.position);
     shadowGround.position.set(xrCam.position.x, SHADOW_LIFT, xrCam.position.z);
   }else{
     if(previewObj) previewObj.rotation.y += dt * 0.35;
     controls.update();
+    updateSunLight(controls.target);
   }
   updateClipPlanes();
 
