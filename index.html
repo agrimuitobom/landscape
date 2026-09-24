@@ -68,6 +68,8 @@
   }
   #support.ok{ background:#E3E9DB; color:var(--moss-deep); }
   #support.ng{ background:#EBDCD4; color:#7A4634; }
+  #offline-status{ font-size:11.5px; color:var(--ink-soft); margin:-14px 0 22px; min-height:1em; }
+  #offline-status.ok{ color:var(--moss-deep); }
 
   h2{
     font-family:"Shippori Mincho", serif;
@@ -286,6 +288,7 @@
     </p>
 
     <div id="support">デバイスを確認しています…</div>
+    <div id="offline-status"></div>
 
     <h2>ライブラリ</h2>
     <div class="group-label" id="real-label" hidden>リアル素材</div>
@@ -467,6 +470,32 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 window.__appReady = true;   // ここまで来ればライブラリ読込は成功
+
+/* オフライン対応: 一度開けば、電波のない庭でも起動できるように Service Worker でキャッシュする */
+const offlineEl = document.getElementById('offline-status');
+async function checkOfflineReady(){
+  const need = [new URL('index.html', location.href).href, import.meta.resolve('three')];
+  for(const url of need) if(!(await caches.match(url, { ignoreSearch: true }))) return false;
+  return true;
+}
+if('serviceWorker' in navigator && window.isSecureContext){
+  navigator.serviceWorker.register('sw.js').then(async () => {
+    await navigator.serviceWorker.ready;
+    for(let i=0; i<10; i++){   // 初回はインストール(保存)が終わるまで少し待つ
+      if(await checkOfflineReady()){
+        offlineEl.textContent = '✔ この端末に保存済み — 電波がなくても起動できます';
+        offlineEl.className = 'ok';
+        return;
+      }
+      offlineEl.textContent = 'オフライン用に保存しています…';
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    offlineEl.textContent = 'オフライン用の保存が完了していません（通信できる場所で開き直してください）';
+  }).catch(err => {
+    console.warn('Service Worker を登録できませんでした:', err);
+    offlineEl.textContent = '';
+  });
+}
 
 /* ================= 基本セットアップ ================= */
 
