@@ -132,7 +132,7 @@
   button.ghost:hover{ background:rgba(95,112,82,.1); }
 
   #start-btn{
-    width:100%; margin-top:30px;
+    width:100%; margin-top:18px;
     padding:17px; font-size:16px; font-weight:700; letter-spacing:.22em;
     font-family:"Shippori Mincho", serif;
     color:var(--washi); background:var(--ink);
@@ -148,6 +148,12 @@
     color:var(--ink-soft); line-height:1.5;
   }
   table.controls td:first-child{ width:42%; font-weight:700; color:var(--ink); }
+  .opt-row{
+    display:flex; gap:10px; align-items:flex-start; margin-top:26px;
+    font-size:13px; font-weight:700; cursor:pointer; line-height:1.5;
+  }
+  .opt-row input{ margin-top:3px; accent-color:var(--moss-deep); width:16px; height:16px; flex:none; }
+  .opt-row small{ display:block; font-size:11px; font-weight:400; color:var(--ink-soft); }
   .note{ margin-top:18px; font-size:11.5px; line-height:1.8; color:var(--ink-soft); }
   .layout-status{ font-size:12px; line-height:1.7; color:var(--ink-soft); margin-bottom:8px; }
 
@@ -251,6 +257,9 @@
       <input type="file" id="layout-input" accept=".json,application/json" hidden>
     </div>
 
+    <label class="opt-row"><input type="checkbox" id="opt-occlusion" checked>
+      <span>実物による遮蔽<small>現実の木や人の後ろに置いた物が隠れます（Depth API・試験機能）</small></span></label>
+
     <button id="start-btn" disabled>MRで開始</button>
 
     <h2>操作方法</h2>
@@ -326,8 +335,8 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
   }
 }
 </script>
@@ -397,9 +406,11 @@ scene.add(sun);
 scene.add(sun.target);
 
 /* MR中に実際の床へ影だけを落とす面(パススルーでは影以外は透明) */
+/* 実物遮蔽(深度)と同じ高さだとちらつくため、わずかに浮かせて手前にずらす */
+const SHADOW_LIFT = 0.01;
 const shadowGround = new THREE.Mesh(
   new THREE.PlaneGeometry(30, 30),
-  new THREE.ShadowMaterial({ opacity: 0.32 })
+  new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
 );
 shadowGround.rotation.x = -Math.PI/2;
 shadowGround.receiveShadow = true;
@@ -808,7 +819,7 @@ function makeLawn(){
 
 const loader = new GLTFLoader();
 const draco = new DRACOLoader();
-draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
+draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/libs/draco/');
 loader.setDRACOLoader(draco);
 loader.setMeshoptDecoder(MeshoptDecoder);   // gltf-transform で軽量化したGLB用
 
@@ -1123,6 +1134,12 @@ function refreshPreview(){
 
 const supportEl = document.getElementById('support');
 const startBtn = document.getElementById('start-btn');
+/* 実物による遮蔽の設定(この端末に記憶) */
+const occlusionOpt = document.getElementById('opt-occlusion');
+try{ occlusionOpt.checked = localStorage.getItem('sekitei.occlusion') !== 'off'; }catch(err){}
+occlusionOpt.addEventListener('change', () => {
+  try{ localStorage.setItem('sekitei.occlusion', occlusionOpt.checked ? 'on' : 'off'); }catch(err){}
+});
 let xrSupported = false;
 
 if(navigator.xr){
@@ -1154,12 +1171,26 @@ let xrSession = null;
 
 startBtn.addEventListener('click', async () => {
   if(!xrSupported) return;
+  xrSession = null;
   try{
-    xrSession = await navigator.xr.requestSession('immersive-ar', {
+    const base = {
       requiredFeatures: ['local-floor', 'hit-test'],
       optionalFeatures: ['dom-overlay', 'anchors'],
       domOverlay: { root: xrOverlay }
-    });
+    };
+    if(occlusionOpt.checked){
+      // 現実の奥行き(Depth API)で仮想物を隠す。three.js が遮蔽用の深度を自動で描き込む
+      try{
+        xrSession = await navigator.xr.requestSession('immersive-ar', {
+          ...base,
+          optionalFeatures: [...base.optionalFeatures, 'depth-sensing'],
+          depthSensing: { usagePreference: ['gpu-optimized'], dataFormatPreference: [] }
+        });
+      }catch(err){
+        console.warn('depth-sensing 付きで開始できないため、遮蔽なしで開始します:', err);
+      }
+    }
+    if(!xrSession) xrSession = await navigator.xr.requestSession('immersive-ar', base);
   }catch(err){
     alert('MRセッションを開始できませんでした:\n' + (err.message || err));
     return;
@@ -1181,9 +1212,18 @@ renderer.xr.addEventListener('sessionstart', () => {
   updateCount();
   const n = placedGroup.children.length;
   toast(n ? `前回の配置 ${n}個を復元しました` : '床に向けてトリガーで設置');
+  // 深度データは最初の数フレーム後に届くので、少し待ってから遮蔽の状態を知らせる
+  if(occlusionOpt.checked){
+    const session = xrSession;
+    setTimeout(() => {
+      if(xrSession !== session) return;
+      toast(renderer.xr.hasDepthSensing() ? '実物による遮蔽: 有効' : '実物による遮蔽: この端末・ブラウザでは使えません');
+    }, 2500);
+  }
 });
 
 renderer.xr.addEventListener('sessionend', () => {
+  xrSession = null;
   launcher.style.display = '';
   xrOverlay.classList.remove('on');
   previewGround.visible = true;
@@ -1458,7 +1498,8 @@ scene.add(reticle);
 
 function makeReticle(){
   const g = new THREE.Group();
-  const mat = (op) => new THREE.MeshBasicMaterial({ color:0x5F7052, transparent:true, opacity:op, side:THREE.DoubleSide });
+  // 照準は現実の床と同じ深さにあるため、遮蔽で欠けないよう深度テストを外して常に表示する
+  const mat = (op) => new THREE.MeshBasicMaterial({ color:0x5F7052, transparent:true, opacity:op, side:THREE.DoubleSide, depthTest:false });
   [[0.055,0.07,0.85],[0.12,0.13,0.55],[0.19,0.198,0.3]].forEach(([a,b,o]) => {
     const r = new THREE.Mesh(new THREE.RingGeometry(a,b,48), mat(o));
     r.rotation.x = -Math.PI/2;
@@ -1963,7 +2004,7 @@ renderer.setAnimationLoop((t, frame) => {
     const xrCam = renderer.xr.getCamera();
     sun.position.set(xrCam.position.x + 2, 4, xrCam.position.z + 1.5);
     sun.target.position.set(xrCam.position.x, 0, xrCam.position.z);
-    shadowGround.position.set(xrCam.position.x, 0, xrCam.position.z);
+    shadowGround.position.set(xrCam.position.x, SHADOW_LIFT, xrCam.position.z);
   }else{
     if(previewObj) previewObj.rotation.y += dt * 0.35;
     controls.update();
