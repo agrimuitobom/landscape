@@ -209,7 +209,22 @@
     background:rgba(35,39,31,.86); color:var(--washi);
     border-radius:14px; padding:12px 14px; font-size:13px;
   }
-  #xr-sun-panel.on{ display:block; }
+  #xr-sun-panel.on, .xr-panel.on{ display:block; }
+  .xr-panel{
+    pointer-events:auto; display:none;
+    position:absolute; top:74px; right:16px; width:300px;
+    background:rgba(35,39,31,.86); color:var(--washi);
+    border-radius:14px; padding:12px 14px; font-size:13px;
+  }
+  .xr-panel .sp-row{ display:flex; gap:8px; margin:6px 0; }
+  .xr-panel .sp-row button{ flex:1; }
+  .xr-panel .sp-info{ white-space:pre-line; font-size:12px; line-height:1.6; margin-bottom:6px; }
+  .xr-panel button{
+    font-family:inherit; font-size:13px; font-weight:700; cursor:pointer;
+    border:none; border-radius:20px; padding:8px 10px;
+    background:rgba(234,231,220,.16); color:var(--washi);
+  }
+  .xr-panel button.on{ background:var(--moss); }
   #xr-sun-panel .sp-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; }
   #xr-sun-panel .sp-row span{ flex:1; text-align:center; font-weight:700; font-size:15px; }
   #xr-sun-panel button{
@@ -310,6 +325,14 @@
       ※ 影を落とすのは配置した物だけです（建物・既存の木の影は含みません）。
     </p>
 
+    <h2>地面の起伏</h2>
+    <p class="layout-status" id="ground-status">—</p>
+    <div class="btn-row"><button class="ghost" id="ground-clear-btn">地面の記録を消す</button></div>
+    <p class="note" style="margin-top:8px">
+      ※ 屋外の傾斜地・段差では、MR中に「⛰地面」→「記録モード」にして、コントローラーの先端を地面に軽く当ててトリガーを引きます。
+      数か所（斜面の上と下・段差の上下など）記録すると、その起伏に沿って配置されます。
+    </p>
+
     <h2>操作方法</h2>
     <table class="controls">
       <tr><td>トリガー（床に向けて）</td><td>選択中のモデルを設置</td></tr>
@@ -346,6 +369,7 @@
     <button id="xr-lock">⬍根入れ</button>
     <button id="xr-measure">📐計測</button>
     <button id="xr-sun">☀季節</button>
+    <button id="xr-ground">⛰地面</button>
     <button id="xr-undo">戻す</button>
     <button id="xr-clear" class="warn">全削除</button>
     <button id="xr-exit">終了</button>
@@ -361,6 +385,11 @@
       <button data-sun="now">現在</button>
       <button data-sun="north">北を合わせる</button>
     </div>
+  </div>
+  <div id="xr-ground-panel" class="xr-panel">
+    <div class="sp-info" id="xr-ground-info">—</div>
+    <div class="sp-row"><button data-g="record">● 記録モード</button><button data-g="show">地面を表示</button></div>
+    <div class="sp-row"><button data-g="undo">最後の点を消す</button><button data-g="clear">すべて消す</button></div>
   </div>
   <div id="xr-toast"></div>
   <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝根入れ（⤢で大きさ）　・　グリップ＝削除　・　A/X＝複製　B/Y＝戻す</div>
@@ -1342,6 +1371,8 @@ renderer.xr.addEventListener('sessionend', () => {
   shadowGround.visible = false;
   shadowGround.position.set(0, 0, 0);
   northMode = false;
+  groundMode = false;
+  closeXRPanels();
   lastTargetText = ''; currentTarget = null;
   xrTargetEl.classList.remove('on');
   measureMode = false;
@@ -1451,16 +1482,119 @@ function clearPlaced(){
   for(const o of [...placedGroup.children]) removeInstance(o);
 }
 
-/* 毎フレーム: 各設置物の地表(position.y + sink)の高さにクリッピング平面を合わせる */
-const _ground = new THREE.Vector3();
+/* ---------- 地形(地面の高さの記録) ----------
+   Quest の hit-test は屋外の起伏を認識できないため、コントローラーの先端を地面に当てて
+   高さを記録し、その点群を逆距離加重(IDW)でなめらかにつないだ面を地形として使う。
+   点はアンカー基準の座標で保存するので、次回も同じ場所に復元される。 */
+const LS_GROUND = 'sekitei.ground.v1';
+const GROUND_TIP_OFFSET = 0.02;   // コントローラーの光線の起点から先端の接地点までのおおよその差(m)
+const terrainGroup = new THREE.Group();   // placedGroup と同じ座標系(アンカー直下・無回転)
+anchorRoot.add(terrainGroup);
+let groundPts = [];
+try{ groundPts = JSON.parse(localStorage.getItem(LS_GROUND) || '[]'); }catch(err){}
+let terrainMesh = null, terrainShadow = null, terrainShown = false;
+
+function terrainHeight(x, z){
+  if(!groundPts.length) return 0;
+  let sw = 0, sy = 0;
+  for(const [px, py, pz] of groundPts){
+    const d2 = (x - px) ** 2 + (z - pz) ** 2;
+    if(d2 < 1e-8) return py;
+    const w = 1 / d2;
+    sw += w; sy += w * py;
+  }
+  return sy / sw;
+}
+function terrainNormal(x, z, out = new THREE.Vector3()){
+  const e = 0.05;
+  const dx = terrainHeight(x + e, z) - terrainHeight(x - e, z);
+  const dz = terrainHeight(x, z + e) - terrainHeight(x, z - e);
+  return out.set(-dx / (2 * e), 1, -dz / (2 * e)).normalize();
+}
+
+function rebuildTerrain(){
+  for(const o of [...terrainGroup.children]){
+    terrainGroup.remove(o);
+    o.traverse(c => { if(c.geometry) c.geometry.dispose(); if(c.material) c.material.dispose(); });
+  }
+  terrainMesh = terrainShadow = null;
+  if(groundPts.length){
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for(const [x, , z] of groundPts){ minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+    const M = 4;   // 記録した範囲の外側にも少し広げる
+    const w = maxX - minX + 2*M, d = maxZ - minZ + 2*M;
+    const nx = Math.min(80, Math.ceil(w / 0.2)), nz = Math.min(80, Math.ceil(d / 0.2));
+    const geo = new THREE.PlaneGeometry(w, d, nx, nz);
+    geo.rotateX(-Math.PI / 2);
+    geo.translate((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+    const pos = geo.attributes.position;
+    for(let i=0; i<pos.count; i++) pos.setY(i, terrainHeight(pos.getX(i), pos.getZ(i)));
+    geo.computeVertexNormals();
+    // 光線判定用(表示は切り替え)。線表示で起伏が分かるようにする
+    terrainMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x5F7052, wireframe: true, transparent: true, opacity: 0.35 }));
+    terrainMesh.material.visible = terrainShown;
+    // 影を受ける面(深度とのちらつき防止に少し浮かせる)
+    terrainShadow = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    terrainShadow.position.y = SHADOW_LIFT;
+    terrainShadow.receiveShadow = true;
+    terrainGroup.add(terrainMesh, terrainShadow);
+    // 記録した点の目印
+    const pinGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.12, 8);
+    pinGeo.translate(0, 0.06, 0);
+    const pinMat = new THREE.MeshBasicMaterial({ color: 0xC0503C, depthTest: false });
+    for(const [x, y, z] of groundPts){
+      const pin = new THREE.Mesh(pinGeo, pinMat);
+      pin.position.set(x, y, z);
+      pin.visible = terrainShown;
+      pin.userData.isPin = true;
+      terrainGroup.add(pin);
+    }
+  }
+  shadowGround.material.visible = !terrainShadow;   // 地形があるときは地形の面に影を落とす
+  refreshGroundUI();
+}
+function setTerrainShown(on){
+  terrainShown = on;
+  if(terrainMesh) terrainMesh.material.visible = on;
+  terrainGroup.children.forEach(o => { if(o.userData.isPin) o.visible = on; });
+  refreshGroundUI();
+}
+function saveGround(){
+  try{ localStorage.setItem(LS_GROUND, JSON.stringify(groundPts)); }catch(err){}
+}
+function setGroundPts(pts, { snap = true } = {}){
+  groundPts = pts;
+  saveGround();
+  rebuildTerrain();
+  if(snap) snapAllToTerrain();
+}
+/* 地形が変わったら、設置物の根元を新しい地表の高さに合わせ直す(根入れ深さは保つ) */
+function snapAllToTerrain(){
+  for(const o of placedGroup.children){
+    o.position.y = terrainHeight(o.position.x, o.position.z) - (o.userData.sink || 0);
+  }
+  scheduleSave();
+}
+function groundSummary(){
+  if(!groundPts.length) return '地面の記録なし（平らな床として扱います）';
+  const ys = groundPts.map(p => p[1]);
+  return `地面の記録 ${groundPts.length}点・高低差 ${fmtLen(Math.max(...ys) - Math.min(...ys))}`;
+}
+
+/* 毎フレーム: 各設置物の地表(position.y + sink)にクリッピング平面を合わせる。
+   地形があるときは斜面の傾きにも合わせる */
+const _ground = new THREE.Vector3(), _gn = new THREE.Vector3(), _q = new THREE.Quaternion();
 function updateClipPlanes(){
   placedGroup.updateWorldMatrix(true, false);
+  placedGroup.getWorldQuaternion(_q);
   for(const o of placedGroup.children){
     const pl = o.userData.clipPlane;
     if(!pl) continue;
-    _ground.set(o.position.x, o.position.y + (o.userData.sink || 0), o.position.z);
+    _ground.set(o.position.x, o.position.y + (o.userData.sink || 0) - 0.001, o.position.z);
+    if(groundPts.length) terrainNormal(o.position.x, o.position.z, _gn); else _gn.set(0, 1, 0);
     placedGroup.localToWorld(_ground);
-    pl.constant = -(_ground.y - 0.001);
+    _gn.applyQuaternion(_q);
+    pl.setFromNormalAndCoplanarPoint(_gn, _ground);
   }
 }
 
@@ -1483,6 +1617,7 @@ function serializeLayout(){
     app: 'sekitei',
     version: 1,
     savedAt: new Date().toISOString(),
+    ground: groundPts,
     items: placedGroup.children.map(o => ({
       id: o.userData.modelId,
       name: o.userData.modelName,
@@ -1575,6 +1710,7 @@ layoutInput.addEventListener('change', async (e) => {
     const data = JSON.parse(await file.text());
     if(data.app !== 'sekitei' || !Array.isArray(data.items)) throw new Error('形式が違います');
     if(placedGroup.children.length) pushUndo();
+    if(Array.isArray(data.ground)) setGroundPts(data.ground, { snap: false });   // 地面の記録も一緒に復元
     const missing = applyLayout(data);
     layoutReady = true;
     saveLayoutNow();
@@ -1663,6 +1799,12 @@ function setupHitTest(){
 
 /* コントローラーcのレイが床と交わる点(ヒットテスト優先・平面フォールバック) */
 function floorPointFor(c, frame){
+  // 地面を記録してあれば、その地形の面を最優先(屋外の起伏に追従)
+  if(terrainMesh){
+    setRayFrom(c);
+    const hit = raycaster.intersectObject(terrainMesh, false)[0];
+    if(hit) return hit.point.clone();
+  }
   const src = c.userData.inputSource;
   const refSpace = renderer.xr.getReferenceSpace();
   if(src && frame){
@@ -1803,6 +1945,7 @@ function onSelectStart(c){
   if(!renderer.xr.isPresenting) return;
   activeController = c;
   if(northMode){ northMode = false; c.userData.placeOnRelease = false; setNorthFrom(c); return; }
+  if(groundMode){ c.userData.placeOnRelease = false; recordGroundPoint(c); return; }
   if(measureMode){ addMeasurePoint(c); return; }
   const obj = objectUnderRay(c);
   if(obj){
@@ -1816,6 +1959,7 @@ function onSelectStart(c){
 
 function onSelectEnd(c){
   if(!renderer.xr.isPresenting) return;
+  if(groundMode) return;
   if(measureMode){ c.userData.placeOnRelease = false; return; }
   if(grabbed && activeController === c){
     grabbed = null;
@@ -2281,6 +2425,65 @@ sunPanel.addEventListener('click', (e) => {
   }
 });
 
+/* ---------- 地面の記録(MR操作) ---------- */
+let groundMode = false;
+const groundPanel = document.getElementById('xr-ground-panel');
+const groundBtn = document.getElementById('xr-ground');
+
+/* コントローラーの先端を地面に当ててトリガー → その点の高さを記録。
+   近く(30cm以内)に既存の点があれば置き換える(測り直し) */
+function recordGroundPoint(c){
+  const tip = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld);
+  const p = worldToPlaced(tip);
+  p.y -= GROUND_TIP_OFFSET;
+  const pts = groundPts.filter(([x, , z]) => (x - p.x) ** 2 + (z - p.z) ** 2 > 0.09);
+  const replaced = pts.length < groundPts.length;
+  const r = (v) => Math.round(v * 1000) / 1000;
+  pts.push([r(p.x), r(p.y), r(p.z)]);
+  setGroundPts(pts);
+  toast(`${replaced ? '測り直しました' : `地面を記録（${pts.length}点目）`} — ${groundSummary()}`);
+}
+
+function refreshGroundUI(){
+  const summary = groundSummary();
+  const st = document.getElementById('ground-status');
+  if(st) st.textContent = summary;
+  const info = document.getElementById('xr-ground-info');
+  if(info) info.textContent = `${summary}\n${groundMode ? '記録中: コントローラーの先端を地面に軽く当ててトリガー' : '「記録モード」で地面の高さを測ります'}`;
+  groundPanel.querySelector('[data-g="record"]').classList.toggle('on', groundMode);
+  groundPanel.querySelector('[data-g="show"]').classList.toggle('on', terrainShown);
+}
+
+function closeXRPanels(except){
+  if(except !== sunPanel){ sunPanel.classList.remove('on'); sunBtn.classList.remove('active-mode'); }
+  if(except !== groundPanel){ groundPanel.classList.remove('on'); groundBtn.classList.toggle('active-mode', groundMode); }
+}
+groundBtn.addEventListener('click', () => {
+  closeXRPanels(groundPanel);
+  groundPanel.classList.toggle('on');
+  groundBtn.classList.toggle('active-mode', groundPanel.classList.contains('on') || groundMode);
+  refreshGroundUI();
+});
+sunBtn.addEventListener('click', () => closeXRPanels(sunPanel));
+groundPanel.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-g]');
+  if(!b) return;
+  const act = b.dataset.g;
+  if(act === 'record'){
+    groundMode = !groundMode;
+    if(groundMode){ measureMode = false; measureBtn.classList.remove('active-mode'); setTerrainShown(true); }
+    toast(groundMode ? '記録モード: 先端を地面に当ててトリガー' : '記録モードを終了しました');
+  }
+  if(act === 'show') setTerrainShown(!terrainShown);
+  if(act === 'undo' && groundPts.length){ setGroundPts(groundPts.slice(0, -1)); toast('最後の点を消しました'); }
+  if(act === 'clear' && groundPts.length){ setGroundPts([]); toast('地面の記録を消しました（平らな床に戻ります）'); }
+  groundBtn.classList.toggle('active-mode', groundPanel.classList.contains('on') || groundMode);
+  refreshGroundUI();
+});
+document.getElementById('ground-clear-btn').addEventListener('click', () => {
+  if(groundPts.length && confirm('地面の記録を消して、平らな床に戻しますか？')) setGroundPts([]);
+});
+
 /* ================= 起動シーケンス ================= */
 /* プリセット登録(参照するUI要素の宣言より後に実行する必要がある) */
 addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true, kind:'andesite' });
@@ -2301,6 +2504,7 @@ addModel('芝生（2m円）',  makeLawn(),    { preset:true, lift:0.005 });
 addModel('石灯籠',        makeLantern(), { preset:true, kind:'andesite' });
 updateLayoutStatus();
 applySun();
+rebuildTerrain();
 /* リアル素材 → 保存済みGLB → 配置レイアウト の順で復元(配置がこれらのモデルを参照するため) */
 loadManifestPresets().then(restoreSavedGLBs).then(loadSavedLayout);
 
@@ -2309,7 +2513,7 @@ if(new URLSearchParams(location.search).has('debug')){
   window.__sekitei = { THREE, scene, camera, controls, models, placedGroup, previewGround,
                        adjustSink, serializeLayout, placedTotals, modelWeight,
                        sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun,
-                       setGrowYears, growthFactor };
+                       setGrowYears, growthFactor, setGroundPts, terrainHeight, setTerrainShown, updateClipPlanes, floorPointFor };
 }
 
 /* ================= メインループ ================= */
