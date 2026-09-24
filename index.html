@@ -225,6 +225,8 @@
     border-radius:5px; background:rgba(255,255,255,.5); color:var(--ink);
   }
   .sun-row input[type=range]{ flex:1; accent-color:var(--moss-deep); }
+  .sun-lbl{ font-size:12px; font-weight:700; }
+  .sun-hint{ font-size:11px; color:var(--ink-soft); }
   .sun-val{ font-size:13px; font-weight:700; min-width:42px; text-align:right; }
   #xr-toast{
     position:absolute; bottom:60px; left:50%; transform:translateX(-50%);
@@ -285,20 +287,26 @@
 
     <button id="start-btn" disabled>MRで開始</button>
 
-    <h2>日当たり</h2>
+    <h2>季節・日当たり</h2>
     <div class="sun-row">
       <select id="sun-month" aria-label="月"></select>
       <input type="range" id="sun-hour" min="4" max="20" step="0.5" aria-label="時刻">
       <span id="sun-hour-label" class="sun-val">—</span>
     </div>
     <p class="layout-status" id="sun-info">—</p>
+    <p class="layout-status" id="season-note">—</p>
+    <div class="sun-row">
+      <span class="sun-lbl">樹木</span>
+      <select id="grow-years" aria-label="年数"></select>
+      <span class="sun-hint">剪定しない場合の成長の目安</span>
+    </div>
     <div class="btn-row">
       <button class="ghost" id="sun-now-btn">現在の日時</button>
       <button class="ghost" id="sun-geo-btn">現在地を使う</button>
     </div>
     <p class="note" style="margin-top:8px">
       場所: <span id="sun-place">—</span><br>
-      ※ MR中に「☀日当たり」→「北を合わせる」で北の方角を一度設定すると、実際の方角どおりに影が落ちます。<br>
+      ※ MR中に「☀季節」→「北を合わせる」で北の方角を一度設定すると、実際の方角どおりに影が落ちます。<br>
       ※ 影を落とすのは配置した物だけです（建物・既存の木の影は含みません）。
     </p>
 
@@ -337,7 +345,7 @@
     <span id="xr-count">0個</span>
     <button id="xr-lock">⬍根入れ</button>
     <button id="xr-measure">📐計測</button>
-    <button id="xr-sun">☀日当たり</button>
+    <button id="xr-sun">☀季節</button>
     <button id="xr-undo">戻す</button>
     <button id="xr-clear" class="warn">全削除</button>
     <button id="xr-exit">終了</button>
@@ -346,6 +354,7 @@
   <div id="xr-sun-panel">
     <div class="sp-row"><button data-sun="month-">◀</button><span id="xr-sun-month">—</span><button data-sun="month+">▶</button></div>
     <div class="sp-row"><button data-sun="hour-">◀</button><span id="xr-sun-hour">—</span><button data-sun="hour+">▶</button></div>
+    <div class="sp-row"><button data-sun="years-">◀</button><span id="xr-grow">—</span><button data-sun="years+">▶</button></div>
     <div class="sp-info" id="xr-sun-info">—</div>
     <div class="sp-row">
       <button data-sun="play">▶ 1日の影</button>
@@ -521,6 +530,11 @@ const MAT = {
   mapleD: new THREE.MeshStandardMaterial({ color:0x8C3A24, roughness:.85, flatShading:true }),
   deck:   new THREE.MeshStandardMaterial({ color:0x8C6F4F, roughness:.85, flatShading:true }),
 };
+/* 季節で色が変わる葉の材質(role)。shade は同じ木の中の濃淡 */
+Object.assign(MAT.leaf.userData,   { role: 'ever',  shade: 1 });
+Object.assign(MAT.leafD.userData,  { role: 'ever',  shade: 0.8 });
+Object.assign(MAT.maple.userData,  { role: 'decid', shade: 1 });
+Object.assign(MAT.mapleD.userData, { role: 'decid', shade: 0.78 });
 
 /* 砂利・芝生用の斑点テクスチャ */
 function makeSpeckleTexture(base, colors, n, rmin, rmax){
@@ -855,11 +869,27 @@ function makeGravel(){
   return g;
 }
 
+/* 芝(高麗芝)の季節ごとのテクスチャ: 生育期=緑 / 4月・11月=移行期 / 12〜3月=休眠(枯れ色) */
+const _lawnTex = {};
+function lawnTexture(month){
+  const key = (month >= 5 && month <= 10) ? 'green' : (month === 4 || month === 11) ? 'mid' : 'dormant';
+  if(!_lawnTex[key]){
+    const pal = {
+      green:   ['#5F7847', ['#4E6639', '#6B8752', '#3F5530', '#77935C']],
+      mid:     ['#7D8150', ['#6B7443', '#948E5C', '#5E6A3C', '#A39866']],
+      dormant: ['#A08C62', ['#8F7B55', '#B29E72', '#7E6C4B', '#BFAE85']],
+    }[key];
+    _lawnTex[key] = makeSpeckleTexture(pal[0], pal[1], 2400, 1, 3);
+    _lawnTex[key].repeat.set(2, 2);
+  }
+  return _lawnTex[key];
+}
+
 function makeLawn(){
   const g = new THREE.Group();
-  const tex = makeSpeckleTexture('#5F7847', ['#4E6639', '#6B8752', '#3F5530', '#77935C'], 2400, 1, 3);
-  tex.repeat.set(2, 2);
-  const m = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshStandardMaterial({ map:tex, roughness:1 }));
+  const mat = new THREE.MeshStandardMaterial({ map: lawnTexture(6), roughness:1 });
+  mat.userData.role = 'lawn';
+  const m = new THREE.Mesh(new THREE.CircleGeometry(1, 40), mat);
   m.rotation.x = -Math.PI/2;
   m.userData.noShadow = true;
   g.add(m);
@@ -972,13 +1002,31 @@ function computeVolume(root){
 }
 
 /* 比重(t/m³)の選択肢。重量は 体積×比重 の目安 */
-const DENSITIES = [
-  { v: 2.65, label: '御影石・花崗岩 2.65' },
-  { v: 2.6,  label: '安山岩・一般の庭石 2.6' },
-  { v: 2.3,  label: '砂岩・凝灰岩 2.3' },
-  { v: 0,    label: '重量を出さない（樹木など）' },
+/* 素材の種類: 石は比重(t/m³)で重量を、樹木は成長の目安(年あたりの伸び・最大樹高 m)を持つ。
+   成長は剪定しない場合のおおよその値 */
+const KINDS = [
+  { id: 'granite',   label: '石: 御影石・花崗岩（比重2.65）', density: 2.65 },
+  { id: 'andesite',  label: '石: 安山岩・一般の庭石（比重2.6）', density: 2.6 },
+  { id: 'sandstone', label: '石: 砂岩・凝灰岩（比重2.3）', density: 2.3 },
+  { id: 'decid',     label: '落葉樹（モミジ等・年40cm）', plant: { rate: 0.4,  max: 10,  decid: true } },
+  { id: 'ever',      label: '常緑樹（マツ・カシ等・年30cm）', plant: { rate: 0.3,  max: 8 } },
+  { id: 'shrub',     label: '低木（ツツジ等・年8cm）', plant: { rate: 0.08, max: 1.5 } },
+  { id: 'none',      label: 'その他（重量・成長なし）' },
 ];
-const DEFAULT_DENSITY = 2.6;
+const DEFAULT_KIND = 'andesite';
+const kindById = (id) => KINDS.find(k => k.id === id) || KINDS.find(k => k.id === 'none');
+/* 旧形式(比重だけ保存)からの読み替え */
+function kindFromDensity(d){
+  if(d == null) return DEFAULT_KIND;
+  if(!d) return 'none';
+  return d >= 2.63 ? 'granite' : d <= 2.4 ? 'sandstone' : 'andesite';
+}
+function setKind(m, id){
+  const k = kindById(id);
+  m.kind = k.id;
+  m.density = k.density || 0;
+  m.plant = k.plant || null;
+}
 
 /* 推定重量(t)。体積が信頼できない形状(平面・破綻したメッシュ)は null */
 function modelWeight(m, scale = 1){
@@ -991,7 +1039,7 @@ function fmtWeight(t){
 }
 
 /* 底面中心を原点に正規化してテンプレート化 */
-function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='', density=0 } = {}){
+function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='', kind='none', density=null } = {}){
   const box = new THREE.Box3().setFromObject(rawRoot);
   if(box.isEmpty()){ alert(`「${name}」にメッシュが見つかりませんでした`); return null; }
   const size = box.getSize(new THREE.Vector3());
@@ -1000,7 +1048,7 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, 
   rawRoot.position.y += lift;
   rawRoot.traverse(o => {
     if(o.isMesh){
-      o.castShadow = o.material !== MAT.water;   // 水面は影を落とさない
+      o.castShadow = o.material !== MAT.water && !o.userData.noShadow;   // 水面・地面材は影を落とさない
       o.receiveShadow = true;
     }
   });
@@ -1010,7 +1058,9 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, 
   let volume = computeVolume(template);
   const boxVol = size.x * size.y * size.z;
   if(!(volume >= 0.0005 && volume > boxVol * 0.02 && volume < boxVol * 1.05)) volume = 0;
-  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset, real, credit, volume, density };
+  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset, real, credit, volume };
+  setKind(entry, kind);
+  if(density != null && !entry.plant) entry.density = density;   // manifest で比重を直接指定した場合
   models.push(entry);
   if(select) activeIndex = models.length - 1;
   refreshLibraryUI();
@@ -1041,9 +1091,9 @@ fileInput.addEventListener('change', async (e) => {
       const name = file.name.replace(/\.(glb|gltf)$/i,'');
       const unitScale = suggestUnitScale(gltf.scene, name);
       gltf.scene.scale.multiplyScalar(unitScale);
-      const entry = addModel(name, gltf.scene, { select:true, density:DEFAULT_DENSITY });
+      const entry = addModel(name, gltf.scene, { select:true, kind:DEFAULT_KIND });
       if(entry){
-        dbPut({ id: entry.id, name: entry.name, buffer: buf, unitScale, density: entry.density, addedAt: Date.now() })
+        dbPut({ id: entry.id, name: entry.name, buffer: buf, unitScale, kind: entry.kind, addedAt: Date.now() })
           .catch(err => console.warn('GLBの保存に失敗しました（次回起動時は復元されません）:', err));
       }
     }catch(err){
@@ -1063,7 +1113,7 @@ async function restoreSavedGLBs(){
       try{
         const gltf = await new Promise((res, rej) => loader.parse(rec.buffer, '', res, rej));
         if(rec.unitScale) gltf.scene.scale.multiplyScalar(rec.unitScale);
-        addModel(rec.name, gltf.scene, { id: rec.id, density: rec.density ?? DEFAULT_DENSITY });
+        addModel(rec.name, gltf.scene, { id: rec.id, kind: rec.kind || kindFromDensity(rec.density) });
       }catch(err){
         console.warn('保存済みGLBの復元に失敗:', rec.name, err);
       }
@@ -1102,7 +1152,8 @@ async function loadManifestPresets(){
     const root = gltf.scene;
     if(item.scale) root.scale.setScalar(Number(item.scale) || 1);
     const credit = [item.credit, item.license].filter(Boolean).join(' · ');
-    addModel(item.name || item.file, root, { preset:true, real:true, id:'m:' + (item.id || item.file), credit, density: Number(item.density) || 0 });
+    addModel(item.name || item.file, root, { preset:true, real:true, id:'m:' + (item.id || item.file), credit,
+      kind: item.kind || 'none', density: item.density != null ? Number(item.density) || 0 : null });
   }
   realLabelEl.textContent = failed.length ? `リアル素材（${failed.length}件 読み込み失敗: ${failed.join('、')}）` : 'リアル素材';
 }
@@ -1131,8 +1182,8 @@ function refreshLibraryUI(){
     const showTris = !m.preset || m.real;
     const w = modelWeight(m);
     const densitySelect = m.preset ? '' : `
-        <select class="m-density" title="石の種類（重量の計算に使う比重）">
-          ${DENSITIES.map(d => `<option value="${d.v}"${d.v === m.density ? ' selected' : ''}>${d.label}</option>`).join('')}
+        <select class="m-density" title="種類（石は重量、樹木は成長の計算に使います）">
+          ${KINDS.map(k => `<option value="${k.id}"${k.id === m.kind ? ' selected' : ''}>${k.label}</option>`).join('')}
         </select>`;
     li.innerHTML = `
       <span class="mark"></span>
@@ -1148,8 +1199,9 @@ function refreshLibraryUI(){
     if(sel){
       sel.addEventListener('click', ev => ev.stopPropagation());
       sel.addEventListener('change', () => {
-        m.density = Number(sel.value);
-        dbPatch(m.id, { density: m.density }).catch(() => {});
+        setKind(m, sel.value);
+        dbPatch(m.id, { kind: m.kind }).catch(() => {});
+        applyGrowthAll();
         refreshLibraryUI();
         updateLayoutStatus();
       });
@@ -1178,6 +1230,7 @@ function refreshPreview(){
   const m = models[activeIndex];
   if(!m) return;
   previewObj = m.template.clone(true);
+  applySeasonTo(previewObj);
   scene.add(previewObj);
 }
 
@@ -1379,7 +1432,14 @@ function makeInstance(m){
   inst.userData.modelName = m.name;
   inst.userData.baseSize = m.size;
   inst.userData.sink = 0;
-  return prepareInstance(inst);
+  // 成長表示用の入れ子: 利用者の拡縮(inst.scale)とは別に、樹木の年数分の成長をここで掛ける
+  const grow = new THREE.Group();
+  grow.name = 'growth';
+  while(inst.children.length) grow.add(inst.children[0]);
+  inst.add(grow);
+  prepareInstance(inst);
+  applySeasonTo(inst);
+  return inst;
 }
 function removeInstance(inst){
   placedGroup.remove(inst);
@@ -1454,6 +1514,7 @@ function instantiateFromItem(m, item){
   inst.position.fromArray(item.pos);
   inst.rotation.y = item.rotY || 0;
   inst.scale.setScalar(THREE.MathUtils.clamp(item.scale || 1, 0.05, 10));
+  applyGrowth(inst);
   placedGroup.add(inst);
   return inst;
 }
@@ -1769,6 +1830,7 @@ function onSelectEnd(c){
     if(m && p){
       pushUndo();
       const inst = makeInstance(m);
+      applyGrowth(inst);
       placedGroup.add(inst);
       inst.position.copy(worldToPlaced(p));
       const cam = renderer.xr.getCamera();
@@ -1843,6 +1905,7 @@ function pollThumbsticks(dt){
       }else{
         const s = THREE.MathUtils.clamp(target.scale.x * (1 - y * 0.9 * dt), 0.2, 4.0);
         target.scale.setScalar(s);
+        applyGrowth(target);
         // 根入れ深さは実寸(m)で保つ。石が小さくなって全部埋まらないよう上限だけ合わせる
         const maxSink = (target.userData.baseSize ? target.userData.baseSize.y : 1) * s * 0.95;
         if((target.userData.sink || 0) > maxSink){
@@ -1917,7 +1980,10 @@ function updateTargetInfo(){
   const w = modelWeight(models.find(x => x.id === target.userData.modelId), s);
   const weightNote = w != null ? `　${fmtWeight(w)}` : '';
   const scaleNote = Math.abs(s - 1) > 0.005 ? `　×${s.toFixed(2)} — タップで実寸へ` : '';
-  const text = `${target.userData.modelName || ''}　${dims}${sinkNote}${weightNote}${scaleNote}`;
+  const tm = models.find(x => x.id === target.userData.modelId);
+  const gf = growthFactor(tm, s);
+  const growNote = gf > 1.001 ? `　${fmtYears(sunState.years)}の目安 高${fmtLen(h * gf)}・幅${fmtLen(Math.max(base.x, base.z) * s * gf)}` : '';
+  const text = `${target.userData.modelName || ''}　${dims}${growNote}${sinkNote}${weightNote}${scaleNote}`;
   if(text !== lastTargetText){
     lastTargetText = text;
     xrTargetEl.textContent = text;
@@ -1928,6 +1994,7 @@ xrTargetEl.addEventListener('click', () => {
   if(currentTarget && Math.abs(currentTarget.scale.x - 1) > 0.005){
     pushUndo();
     currentTarget.scale.setScalar(1);
+    applyGrowth(currentTarget);
     scheduleSave();
     toast('実寸（×1.00）に戻しました');
   }
@@ -1997,7 +2064,7 @@ function sunPosition(year, month, day, hour, lat, lon, tz){
 const sunState = (() => {
   const d = new Date();
   const st = { month: d.getMonth() + 1, day: d.getDate(), hour: Math.round((d.getHours() + d.getMinutes()/60) * 2) / 2,
-               lat: 35.68, lon: 139.77, place: '東京（初期値）' };
+               lat: 35.68, lon: 139.77, place: '東京（初期値）', years: 0 };
   try{ Object.assign(st, JSON.parse(localStorage.getItem(LS_SUN) || '{}')); }catch(err){}
   st.hour = THREE.MathUtils.clamp(st.hour, 4, 20);
   return st;
@@ -2019,6 +2086,61 @@ const tzOf = (m, d) => -new Date(new Date().getFullYear(), m - 1, d, 12).getTime
 function sunAt(hour){
   const y = new Date().getFullYear();
   return sunPosition(y, sunState.month, sunState.day, hour, sunState.lat, sunState.lon, tzOf(sunState.month, sunState.day));
+}
+
+/* ---------- 季節(月から自動)と成長(年数) ---------- */
+const GROW_YEARS = [0, 3, 5, 10];
+const fmtYears = (y) => y ? `${y}年後` : '植栽時';
+
+/* 葉色(sRGB)。null は落葉(葉なし) */
+function foliageColor(role, month){
+  if(role === 'decid'){
+    if(month <= 3) return null;
+    return { 4: '#A5C878', 5: '#86B25A', 10: '#7C8C3C', 11: '#B8502C', 12: '#A8683A' }[month] || '#557F3E';
+  }
+  if(role === 'ever') return (month === 4 || month === 5) ? '#5A7F42' : '#49683A';   // 春は新芽で明るく
+  return undefined;
+}
+function seasonNote(month){
+  return { 1: '冬（落葉樹は葉なし・芝は休眠）', 2: '冬（落葉樹は葉なし・芝は休眠）', 3: '早春（芽吹き前）',
+           4: '新緑', 5: '新緑', 6: '夏', 7: '夏', 8: '夏', 9: '夏', 10: '秋（色づき始め）', 11: '紅葉', 12: '落葉期' }[month];
+}
+function applySeasonTo(root){
+  if(!root) return;
+  const month = sunState.month;
+  root.traverse(o => {
+    if(!o.isMesh) return;
+    for(const mt of (Array.isArray(o.material) ? o.material : [o.material])){
+      const role = mt.userData.role;
+      if(role === 'lawn'){ mt.map = lawnTexture(month); continue; }
+      const hex = foliageColor(role, month);
+      if(hex === undefined) continue;
+      o.visible = hex !== null;
+      if(hex) mt.color.set(hex).multiplyScalar(mt.userData.shade || 1);
+    }
+  });
+}
+function applySeasonAll(){
+  placedGroup.children.forEach(applySeasonTo);
+  applySeasonTo(previewObj);
+}
+
+/* 成長: 植栽時の樹高 h0 に 年数×年あたりの伸び を足し、最大樹高で頭打ち。形は相似に拡大 */
+function growthFactor(m, s){
+  if(!m || !m.plant || !sunState.years) return 1;
+  const h0 = m.size.y * s;
+  return Math.min(h0 + m.plant.rate * sunState.years, Math.max(m.plant.max, h0)) / h0;
+}
+function applyGrowth(inst){
+  const g = inst.children[0];
+  if(!g || g.name !== 'growth') return;
+  g.scale.setScalar(growthFactor(models.find(x => x.id === inst.userData.modelId), inst.scale.x));
+}
+function applyGrowthAll(){ placedGroup.children.forEach(applyGrowth); }
+function setGrowYears(y){
+  sunState.years = y; saveSunState();
+  applyGrowthAll();
+  refreshSunUI();
 }
 
 /* 日の出・日の入(暦と同じく太陽上端+大気差 = 高度-0.833° を1分刻みで探す) */
@@ -2048,10 +2170,12 @@ function applySun(){
   sun.intensity = 1.9 * k;
   sun.castShadow = el > 0;
   sun.color.setHSL(0.09, THREE.MathUtils.lerp(0.75, 0.25, THREE.MathUtils.smoothstep(el, 5, 35)), 0.93);
-  refreshSunUI(az, el);
+  applySeasonAll();
+  refreshSunUI();
 }
 
-function refreshSunUI(az, el){
+function refreshSunUI(){
+  const { az, el } = sunAt(sunState.hour);
   const dateText = `${sunState.month}月${sunState.day}日`;
   const info = el > 0
     ? `太陽 高度${Math.round(el)}°・方位 ${DIR8[Math.round(az / 45) % 8]}（${Math.round(az)}°）`
@@ -2063,7 +2187,10 @@ function refreshSunUI(az, el){
   document.getElementById('sun-place').textContent = `${sunState.place}（緯度${sunState.lat.toFixed(2)}・経度${sunState.lon.toFixed(2)}）`;
   document.getElementById('xr-sun-month').textContent = dateText;
   document.getElementById('xr-sun-hour').textContent = fmtHour(sunState.hour);
-  document.getElementById('xr-sun-info').textContent = `${info}\n${sunTimes()}${northVec ? '' : '\n※ 北が未設定です'}`;
+  document.getElementById('xr-sun-info').textContent = `${info}\n${sunTimes()}\n季節: ${seasonNote(sunState.month)}${northVec ? '' : '\n※ 北が未設定です'}`;
+  document.getElementById('grow-years').value = String(sunState.years || 0);
+  document.getElementById('season-note').textContent = `季節: ${seasonNote(sunState.month)}（月に合わせて葉色・芝の色が変わります）`;
+  document.getElementById('xr-grow').textContent = fmtYears(sunState.years || 0);
 }
 
 /* 毎フレーム: 太陽方向をアンカーの向きに合わせてワールドへ。影の範囲は見ている位置に追従 */
@@ -2115,6 +2242,9 @@ for(let m=1; m<=12; m++) sunMonthEl.add(new Option(`${m}月`, String(m)));
 sunMonthEl.addEventListener('change', () => setSunMonth(Number(sunMonthEl.value)));
 document.getElementById('sun-hour').addEventListener('input', (e) => setSunHour(Number(e.target.value)));
 document.getElementById('sun-now-btn').addEventListener('click', setSunNow);
+const growYearsEl = document.getElementById('grow-years');
+GROW_YEARS.forEach(y => growYearsEl.add(new Option(fmtYears(y), String(y))));
+growYearsEl.addEventListener('change', () => setGrowYears(Number(growYearsEl.value)));
 document.getElementById('sun-geo-btn').addEventListener('click', () => {
   if(!navigator.geolocation){ alert('この端末では現在地を取得できません'); return; }
   navigator.geolocation.getCurrentPosition(pos => {
@@ -2139,6 +2269,10 @@ sunPanel.addEventListener('click', (e) => {
   if(act === 'hour-') setSunHour(sunState.hour - 0.5);
   if(act === 'hour+') setSunHour(sunState.hour + 0.5);
   if(act === 'now') setSunNow();
+  if(act === 'years-' || act === 'years+'){
+    const i = GROW_YEARS.indexOf(sunState.years || 0);
+    setGrowYears(GROW_YEARS[(i + (act === 'years+' ? 1 : GROW_YEARS.length - 1)) % GROW_YEARS.length]);
+  }
   if(act === 'play') toggleSunPlay();
   if(act === 'north'){
     northMode = true;
@@ -2149,22 +2283,22 @@ sunPanel.addEventListener('click', (e) => {
 
 /* ================= 起動シーケンス ================= */
 /* プリセット登録(参照するUI要素の宣言より後に実行する必要がある) */
-addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true, density:DEFAULT_DENSITY });
-addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true, density:DEFAULT_DENSITY });
-addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true, density:DEFAULT_DENSITY });
-addModel('飛石（3枚）',   makeSteppingStones(), { preset:true, density:DEFAULT_DENSITY });
-addModel('松の木',        makePine(),    { preset:true });
-addModel('もみじ',        makeMaple(),   { preset:true });
-addModel('低木',          makeShrub(),   { preset:true });
+addModel('岩（丸・大）',  makeRock({ r:0.5,  flat:0.75, seed:3 }), { preset:true, select:true, kind:'andesite' });
+addModel('岩（平石）',    makeRock({ r:0.42, flat:0.4,  seed:8 }), { preset:true, kind:'andesite' });
+addModel('立石',          makeRock({ r:0.28, flat:1.9,  seed:5 }), { preset:true, kind:'andesite' });
+addModel('飛石（3枚）',   makeSteppingStones(), { preset:true, kind:'andesite' });
+addModel('松の木',        makePine(),    { preset:true, kind:'ever' });
+addModel('もみじ',        makeMaple(),   { preset:true, kind:'decid' });
+addModel('低木',          makeShrub(),   { preset:true, kind:'shrub' });
 addModel('木柵（1m）',    makeFence(),   { preset:true });
 addModel('竹垣（1m）',    makeBambooFence(), { preset:true });
 addModel('ウッドデッキ',  makeDeck(),    { preset:true });
 addModel('小川（2m）',    makeStream(),  { preset:true, lift:0.01 });
 addModel('池',            makePond(),    { preset:true, lift:0.01 });
-addModel('蹲踞（つくばい）', makeTsukubai(), { preset:true, density:DEFAULT_DENSITY });
+addModel('蹲踞（つくばい）', makeTsukubai(), { preset:true, kind:'andesite' });
 addModel('砂利敷き（2×2m）', makeGravel(), { preset:true, lift:0.006 });
 addModel('芝生（2m円）',  makeLawn(),    { preset:true, lift:0.005 });
-addModel('石灯籠',        makeLantern(), { preset:true, density:DEFAULT_DENSITY });
+addModel('石灯籠',        makeLantern(), { preset:true, kind:'andesite' });
 updateLayoutStatus();
 applySun();
 /* リアル素材 → 保存済みGLB → 配置レイアウト の順で復元(配置がこれらのモデルを参照するため) */
@@ -2174,7 +2308,8 @@ loadManifestPresets().then(restoreSavedGLBs).then(loadSavedLayout);
 if(new URLSearchParams(location.search).has('debug')){
   window.__sekitei = { THREE, scene, camera, controls, models, placedGroup, previewGround,
                        adjustSink, serializeLayout, placedTotals, modelWeight,
-                       sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun };
+                       sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun,
+                       setGrowYears, growthFactor };
 }
 
 /* ================= メインループ ================= */

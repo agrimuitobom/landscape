@@ -42,7 +42,7 @@ npx @gltf-transform/cli optimize 元のファイル.glb presets/rock_moss_01.glb
       "file": "rock_moss_01.glb",
       "credit": "Poly Haven",
       "license": "CC0",
-      "density": 2.6
+      "kind": "andesite"
     },
     {
       "id": "lantern-kasuga",
@@ -63,7 +63,8 @@ npx @gltf-transform/cli optimize 元のファイル.glb presets/rock_moss_01.glb
 | `file` | ○ | このフォルダ内のファイル名 |
 | `credit` / `license` | CC-BY なら必須 | ライブラリの素材名の下に表示されます |
 | `scale` | − | 単位がずれている素材の補正（cm 単位で作られた素材なら `0.01`） |
-| `density` | − | 石の比重（t/m³）。指定すると推定重量を表示します。御影石 `2.65`・安山岩など一般の庭石 `2.6`・砂岩 `2.3`。樹木などには書かないでください |
+| `kind` | − | 種類。石は `granite`（御影石 2.65）・`andesite`（一般の庭石 2.6）・`sandstone`（砂岩 2.3）で推定重量を表示。樹木は `decid`（落葉樹 年40cm）・`ever`（常緑樹 年30cm）・`shrub`（低木 年8cm）で「年数」切替時に成長の目安を表示 |
+| `density` | − | 比重（t/m³）を直接指定する場合（`kind` より優先。樹木には書かない） |
 
 置いたら GitHub に push し、GitHub Pages の更新後に Quest でページを再読み込みしてください。
 ライブラリに表示される寸法（幅×奥行×高さ）が実物と合っているか必ず確認してください。
