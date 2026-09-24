@@ -286,8 +286,24 @@
   .sun-lbl{ font-size:12px; font-weight:700; }
   .sun-hint{ font-size:11px; color:var(--ink-soft); }
   .sun-val{ font-size:13px; font-weight:700; min-width:42px; text-align:right; }
-  #xr-toast{
+  #xr-obj-bar{
+    pointer-events:auto; display:none;
     position:absolute; bottom:60px; left:50%; transform:translateX(-50%);
+    align-items:center; gap:6px;
+    background:rgba(35,39,31,.86); color:var(--washi);
+    padding:8px 10px; border-radius:40px; white-space:nowrap;
+  }
+  #xr-obj-bar.on{ display:flex; }
+  #xr-obj-name{ font-size:12px; font-weight:700; padding:0 8px; max-width:160px; overflow:hidden; text-overflow:ellipsis; }
+  #xr-obj-bar button{
+    font-family:inherit; font-size:14px; font-weight:700; cursor:pointer;
+    border:none; border-radius:30px; padding:10px 14px;
+    background:rgba(234,231,220,.16); color:var(--washi);
+  }
+  #xr-obj-bar button:active{ background:var(--moss); }
+  #xr-obj-bar button.warn{ background:rgba(158,74,46,.55); }
+  #xr-toast{
+    position:absolute; bottom:124px; left:50%; transform:translateX(-50%);
     background:rgba(95,112,82,.9); color:var(--washi);
     font-size:13px; font-weight:700;
     padding:9px 18px; border-radius:30px;
@@ -398,6 +414,8 @@
       <tr><td>A / X ボタン</td><td>指している物を複製</td></tr>
       <tr><td>B / Y ボタン</td><td>直前の操作を元に戻す</td></tr>
       <tr><td>上部の素材ボタン（MR中）</td><td>サムネイル一覧から置く素材を選ぶ（石・樹木などで絞り込み）</td></tr>
+      <tr><td>選択中の物のバー（MR中・画面下）</td><td>最後に置いた／つかんだ物を ↺↻15°回転・▼▲5cm根入れ・複製・削除</td></tr>
+      <tr><td>ハンドトラッキング</td><td>親指と人差し指でつまむ＝トリガー（設置・つかむ・ボタン操作）。回転や根入れは画面下のバーで</td></tr>
       <tr><td>☰ メニュー（MR中）</td><td>距離の計測・季節と日当たり・地面の起伏・案の切替・全削除（2回タップ）</td></tr>
     </table>
 
@@ -463,6 +481,16 @@
     <div class="sp-info" id="xr-plan-info">—</div>
     <div class="sp-row" id="xr-plan-list"></div>
     <div class="sp-row"><button data-p="ghost">前の案を重ねる</button><button data-p="dup">複製して新しい案</button></div>
+  </div>
+  <div id="xr-obj-bar">
+    <span id="xr-obj-name">—</span>
+    <button data-o="rotl">↺ 15°</button>
+    <button data-o="rotr">↻ 15°</button>
+    <button data-o="down" id="xr-obj-down">▼ 5cm</button>
+    <button data-o="up" id="xr-obj-up">▲ 5cm</button>
+    <button data-o="dup">複製</button>
+    <button data-o="del" class="warn">削除</button>
+    <button data-o="desel" title="選択を解除">✕</button>
   </div>
   <div id="xr-toast"></div>
   <div id="xr-help">トリガー＝設置／つかむ　・　スティック左右＝回転　上下＝根入れ（⤢で大きさ）　・　グリップ＝削除　・　A/X＝複製　B/Y＝戻す</div>
@@ -1408,7 +1436,7 @@ startBtn.addEventListener('click', async () => {
   try{
     const base = {
       requiredFeatures: ['local-floor', 'hit-test'],
-      optionalFeatures: ['dom-overlay', 'anchors'],
+      optionalFeatures: ['dom-overlay', 'anchors', 'hand-tracking'],
       domOverlay: { root: xrOverlay }
     };
     if(occlusionOpt.checked){
@@ -1441,6 +1469,7 @@ renderer.xr.addEventListener('sessionstart', () => {
   shadowGround.visible = true;
   setupHitTest();
   initAnchor(xrSession);
+  refreshObjBar();
   refreshXRLabel();
   updateCount();
   const n = placedGroup.children.length;
@@ -1473,6 +1502,8 @@ renderer.xr.addEventListener('sessionend', () => {
   northMode = false;
   groundMode = false;
   closeXRPanels();
+  setSelected(null);
+  selHelper.visible = false;
   lastTargetText = ''; currentTarget = null;
   xrTargetEl.classList.remove('on');
   measureMode = false;
@@ -1573,6 +1604,7 @@ function makeInstance(m){
   return inst;
 }
 function removeInstance(inst){
+  if(selectedObj === inst) setSelected(null);
   placedGroup.remove(inst);
   inst.traverse(o => {   // 複製した材質だけ破棄(テクスチャ・形状はテンプレートと共有)
     if(o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => mt.dispose());
@@ -1580,6 +1612,7 @@ function removeInstance(inst){
 }
 function clearPlaced(){
   for(const o of [...placedGroup.children]) removeInstance(o);
+  setSelected(null);
 }
 
 /* ---------- 地形(地面の高さの記録) ----------
@@ -1851,6 +1884,11 @@ let activeController = null;
 const boxHelper = new THREE.BoxHelper(undefined, 0x5F7052);
 boxHelper.visible = false;
 scene.add(boxHelper);
+/* 選択中(最後に置いた・つかんだ物)の枠。操作バーの対象 */
+let selectedObj = null;
+const selHelper = new THREE.BoxHelper(undefined, 0xEAE7DC);
+selHelper.visible = false;
+scene.add(selHelper);
 
 const reticle = makeReticle();
 reticle.visible = false;
@@ -2354,13 +2392,13 @@ function addMeasurePoint(c){
 }
 
 /* ---------- 複製 ---------- */
-function duplicateTarget(){
-  const t = grabbed || hovered;
+function duplicateTarget(t = grabbed || hovered || selectedObj){
   if(!t){ toast('複製する物に向けてA/Xを押してください'); return; }
   pushUndo();
   const clone = prepareInstance(t.clone(true));   // 材質とクリップ平面は複製先専用にする
   clone.position.x += 0.4;
   placedGroup.add(clone);
+  setSelected(clone);
   updateCount();
   scheduleSave();
   toast(`${t.userData.modelName || ''} を複製しました`);
@@ -2392,6 +2430,7 @@ function onSelectStart(c){
   if(obj){
     pushUndo();
     grabbed = obj;
+    setSelected(obj);
     toast('移動中… 離すと確定');
   }else{
     c.userData.placeOnRelease = true;
@@ -2417,6 +2456,7 @@ function onSelectEnd(c){
       const inst = makeInstance(m);
       applyGrowth(inst);
       placedGroup.add(inst);
+      setSelected(inst);
       inst.position.copy(worldToPlaced(p));
       const cam = renderer.xr.getCamera();
       inst.rotation.y = Math.atan2(cam.position.x - p.x, cam.position.z - p.z) - anchorYaw();
@@ -2540,6 +2580,7 @@ function refreshLockBtn(){
 lockBtn.addEventListener('click', () => {
   scaleLocked = !scaleLocked;
   refreshLockBtn();
+  refreshObjBar();
   toast(scaleLocked ? 'スティック上下＝根入れ（大きさは実寸で固定）' : 'スティック上下＝大きさ（実寸ロック解除）');
 });
 refreshLockBtn();
@@ -2550,7 +2591,7 @@ let currentTarget = null;
 let lastTargetText = '';
 
 function updateTargetInfo(){
-  const target = grabbed || hovered;
+  const target = grabbed || hovered || selectedObj;
   currentTarget = target;
   if(!target){
     if(lastTargetText){ lastTargetText = ''; xrTargetEl.classList.remove('on'); }
@@ -2776,6 +2817,58 @@ function refreshPalette(){
   });
   if(!grid.children.length) grid.innerHTML = '<span class="pd">この分類の素材はありません</span>';
 }
+
+/* ---------- 選択中の物の操作バー ----------
+   ハンドトラッキング(つまむ＝トリガー)にはスティックやボタンが無いため、回転・根入れ・複製・削除を
+   画面下のバーで行えるようにする。コントローラーでも使える */
+const objBar = document.getElementById('xr-obj-bar');
+function setSelected(o){
+  selectedObj = o;
+  refreshObjBar();
+}
+function refreshObjBar(){
+  const show = renderer.xr.isPresenting && !!selectedObj;
+  objBar.classList.toggle('on', show);
+  document.getElementById('xr-obj-down').textContent = scaleLocked ? '▼ 5cm' : '縮小';
+  document.getElementById('xr-obj-up').textContent = scaleLocked ? '▲ 5cm' : '拡大';
+  document.getElementById('xr-obj-name').textContent = selectedObj ? (selectedObj.userData.modelName || '') : '';
+}
+objBar.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-o]');
+  const o = selectedObj;
+  if(!b || !o) return;
+  const act = b.dataset.o;
+  if(act === 'desel'){ setSelected(null); return; }
+  if(act === 'dup'){ duplicateTarget(o); return; }
+  if(act === 'del'){
+    pushUndo();
+    if(grabbed === o) grabbed = null;
+    if(hovered === o) hovered = null;
+    removeInstance(o);
+    updateCount(); scheduleSave();
+    toast('削除しました（「戻す」で元に戻せます）');
+    return;
+  }
+  pushUndo();
+  if(act === 'rotl' || act === 'rotr') o.rotation.y += (act === 'rotl' ? 1 : -1) * Math.PI / 12;
+  if(act === 'down' || act === 'up'){
+    const dir = act === 'down' ? 1 : -1;
+    if(scaleLocked){
+      sinkHoldUntil = 0;
+      adjustSink(o, dir, 0.05 / SINK_SPEED);   // 1回で5cm(地表・1/3根入れでは止まる)
+      const s = o.userData.sink || 0;
+      toast(s > 0.005 ? `根入れ ${fmtLen(s)}` : s < -0.005 ? `${fmtLen(-s)} 浮かせ` : '地表（根入れなし）');
+    }else{
+      const s = THREE.MathUtils.clamp(o.scale.x * (dir > 0 ? 1 / 1.05 : 1.05), 0.2, 4.0);
+      o.scale.setScalar(s);
+      applyGrowth(o);
+      const maxSink = (o.userData.baseSize ? o.userData.baseSize.y : 1) * s * 0.95;
+      if((o.userData.sink || 0) > maxSink){ o.position.y += o.userData.sink - maxSink; o.userData.sink = maxSink; }
+      toast(`×${s.toFixed(2)}`);
+    }
+  }
+  scheduleSave();
+});
 
 /* ================= 日当たり(太陽の位置と影) ================= */
 const LS_SUN = 'sekitei.sun.v1';
@@ -3102,7 +3195,8 @@ if(new URLSearchParams(location.search).has('debug')){
                        adjustSink, serializeLayout, placedTotals, modelWeight,
                        sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun,
                        setGrowYears, growthFactor, setGroundPts, terrainHeight, setTerrainShown, updateClipPlanes, floorPointFor,
-                       switchPlan, newPlan, getPlans: () => plans, ghostGroup, renderPlanImage, refreshPalette, updateModeChip };
+                       switchPlan, newPlan, getPlans: () => plans, ghostGroup, renderPlanImage, refreshPalette, updateModeChip, setSelected, refreshObjBar,
+                       getSelected: () => selectedObj };
 }
 
 /* ================= メインループ ================= */
@@ -3149,6 +3243,8 @@ renderer.setAnimationLoop((t, frame) => {
     }else{
       boxHelper.visible = false;
     }
+    selHelper.visible = !!selectedObj && selectedObj !== target;
+    if(selHelper.visible) selHelper.setFromObject(selectedObj);
 
     pollThumbsticks(dt);
     pollButtons();
