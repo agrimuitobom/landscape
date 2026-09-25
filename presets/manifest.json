@@ -1,3 +1,20 @@
 {
-  "models": []
+  "models": [
+    {
+      "id": "ph-boulder-01",
+      "name": "岩（ボルダー・大）",
+      "file": "boulder_01.glb",
+      "credit": "Rico Cilliers / Poly Haven",
+      "license": "CC0",
+      "kind": "andesite"
+    },
+    {
+      "id": "ph-tree-small-02",
+      "name": "落葉樹（小・高さ4.5m）",
+      "file": "tree_small_02.glb",
+      "credit": "Rico Cilliers / Poly Haven",
+      "license": "CC0",
+      "kind": "decid"
+    }
+  ]
 }

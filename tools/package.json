@@ -1,0 +1,14 @@
+{
+  "name": "sekitei-asset-tools",
+  "private": true,
+  "type": "module",
+  "description": "Poly Haven などの素材を Quest 向けに軽量化するスクリプト（presets/README.md 参照）",
+  "dependencies": {
+    "@gltf-transform/cli": "^4.5.0",
+    "@gltf-transform/core": "^4.5.0",
+    "@gltf-transform/extensions": "^4.5.0",
+    "@gltf-transform/functions": "^4.5.0",
+    "meshoptimizer": "^1.2.0",
+    "sharp": "^0.35.4"
+  }
+}
