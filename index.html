@@ -415,6 +415,7 @@
       <tr><td>右スティック押し込み</td><td>スティック上下の役割を 根入れ ⇔ 大きさ で切り替え</td></tr>
       <tr><td>X ボタン（左手）</td><td>タップ＝指している物（選択中の物）を複製／長押し＝全削除</td></tr>
       <tr><td>Y ボタン（左手）</td><td>タップ＝直前の操作を元に戻す／長押し＝MRを終了</td></tr>
+      <tr><td>操作盤・パネル（Quest）</td><td>レーザーを当ててトリガー（手ならつまむ）。操作盤は視線の下に付いてきます</td></tr>
       <tr><td>上部の素材ボタン（MR中）</td><td>サムネイル一覧から置く素材を選ぶ（石・樹木などで絞り込み）</td></tr>
       <tr><td>選択中の物のバー（MR中・画面下）</td><td>最後に置いた／つかんだ物を ↺↻15°回転・▼▲5cm根入れ・複製・削除</td></tr>
       <tr><td>ハンドトラッキング</td><td>親指と人差し指でつまむ＝トリガー（設置・つかむ・ボタン操作）。回転や根入れは画面下のバーで</td></tr>
@@ -423,7 +424,7 @@
 
     <p class="note">
       ※ Quest本体のブラウザで開いてください（HTTPS必須・GitHub Pages推奨）。<br>
-      ※ Questのブラウザは画面上のボタン表示（dom-overlay）に対応していないため、MR中は目の前の案内板（HUD）とコントローラーのボタンで操作します。季節・日当たり・成長年数・案の切り替えは、MR開始前にこの画面で設定してください。「地面の起伏の記録」「北合わせ」は現在、画面上のボタンが使える端末でのみ操作できます。<br>
+      ※ Questでは、MR中は視線の下に出る<b>操作盤</b>と、目の前に開く<b>パネル</b>（素材・メニュー・季節・地面・案）を、コントローラーのレーザー（手ならつまむ操作）で押して操作します。<br>
       ※ Questにダウンロードした .glb は「GLBファイルを追加」から読み込めます。<br>
       ※ スキャンは Scaniverse / Polycam 等でGLB書き出し。1個あたり10万ポリゴン以下推奨。<br>
       ※ 全員に共通の「リアル素材」は、リポジトリの presets/ フォルダにGLBを置いて登録します（手順は presets/README.md）。<br>
@@ -1548,6 +1549,8 @@ renderer.xr.addEventListener('sessionend', () => {
   btnState.clear();
   hud.visible = false;
   hudActive = false;
+  uiPanel.visible = false;
+  uiPanelName = null;
   saveLayoutNow();
   refreshPreview();
 });
@@ -2130,6 +2133,7 @@ function toggleGhost(){
 }
 
 function refreshPlansUI(){
+  markUIDirty();
   if(!plans) return;
   const cur = currentPlan();
   const tabs = document.getElementById('plan-tabs');
@@ -2474,29 +2478,39 @@ function pollButtons(){
   }
 }
 
-/* ---------- XR内HUD(dom-overlay 非対応ブラウザ = Meta Quest 用) ----------
-   視線の少し下に追従する板に、選択中の素材・指している物の情報・操作方法・通知を描く */
-let hudActive = false, hudSnap = false, hudDirty = true;
+/* ================= XR内の3D UI(dom-overlay 非対応ブラウザ = Meta Quest 用) =================
+   Quest のブラウザは画面上のHTMLボタン(dom-overlay)を出せないため、MR空間に浮かぶ板にボタンを描き、
+   コントローラーのレーザー(手ならつまむ操作)で押せるようにする。
+   - HUD: 視線の下に付いてくる操作盤。素材の切替・メニュー・根入れ⇔大きさ・戻す、選択中の物の操作
+   - パネル: 目の前に固定して開く。素材パレット・メニュー・季節・地面・案・ヘルプ */
+const UI_FONT = '"Zen Kaku Gothic New", sans-serif';
+let hudActive = false, hudSnap = false, hudDirty = true, panelDirty = true;
 let hudToastMsg = '', hudToastUntil = 0;
-const hud = makeHUD();
-hud.visible = false;
-scene.add(hud);
-const hudCamPos = new THREE.Vector3(), hudFwd = new THREE.Vector3(), hudTarget = new THREE.Vector3();
+function markUIDirty(){ hudDirty = true; panelDirty = true; }
 
-function makeHUD(){
+/* キャンバスを貼った板。buttons に押せる範囲(キャンバス座標)を記録する */
+function makeCanvasBoard(pxW, pxH, meterW, order){
   const canvas = document.createElement('canvas');
-  canvas.width = 1024; canvas.height = 420;
+  canvas.width = pxW; canvas.height = pxH;
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
   const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.56, 0.56 * canvas.height / canvas.width),
+    new THREE.PlaneGeometry(meterW, meterW * pxH / pxW),
     new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false })
   );
-  mesh.renderOrder = 999;
-  mesh.userData.canvas = canvas;
-  mesh.userData.tex = tex;
+  mesh.renderOrder = order;
+  mesh.visible = false;
+  Object.assign(mesh.userData, { canvas, tex, buttons: [], hoverAct: null });
+  scene.add(mesh);
   return mesh;
 }
+const hud = makeCanvasBoard(1024, 600, 0.62, 999);
+const uiPanel = makeCanvasBoard(1024, 1024, 0.7, 1000);
+let uiPanelName = null;   // 開いているパネル(null=閉じている)
+let palTab3D = 'すべて', palPage = 0;
+const _uiHead = new THREE.Vector3(), _uiFwd = new THREE.Vector3(), _hudGoal = new THREE.Vector3();
+
 function roundRectPath(g, x, y, w, h, r){
   g.beginPath();
   g.moveTo(x + r, y);
@@ -2511,61 +2525,327 @@ function fitText(g, text, maxW){
   while(g.measureText(t).width > maxW && t.length > 2) t = t.slice(0, -2) + '…';
   return t;
 }
+/* ボタンを描いて押せる範囲を登録。on=選択中, warn=危険操作, hover=レーザーが当たっている */
+function uiButton(board, g, x, y, w, h, label, act, { on = false, warn = false, size = 30, img = null, sub = '' } = {}){
+  const hover = board.userData.hoverAct === act;
+  g.fillStyle = on ? '#5F7052' : warn ? 'rgba(158,74,46,0.75)' : 'rgba(234,231,220,0.14)';
+  roundRectPath(g, x, y, w, h, Math.min(24, h / 2)); g.fill();
+  if(hover){ g.strokeStyle = '#EAE7DC'; g.lineWidth = 4; g.stroke(); }
+  g.fillStyle = '#EAE7DC';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  if(img){
+    const s = Math.min(w - 20, h - 70);
+    if(img.complete && img.naturalWidth) g.drawImage(img, x + (w - s) / 2, y + 8, s, s);
+    g.font = `bold ${size}px ${UI_FONT}`;
+    g.fillText(fitText(g, label, w - 16), x + w / 2, y + h - 44);
+    g.font = `${size - 8}px ${UI_FONT}`;
+    g.fillStyle = 'rgba(234,231,220,0.7)';
+    g.fillText(fitText(g, sub, w - 16), x + w / 2, y + h - 16);
+  }else{
+    g.font = `bold ${size}px ${UI_FONT}`;
+    g.fillText(fitText(g, label, w - 20), x + w / 2, y + h / 2 + 2);
+  }
+  board.userData.buttons.push({ x, y, w, h, act });
+}
+function uiText(g, text, x, y, { size = 28, color = 'rgba(234,231,220,0.85)', bold = false, align = 'center', maxW = 960 } = {}){
+  g.font = `${bold ? 'bold ' : ''}${size}px ${UI_FONT}`;
+  g.fillStyle = color;
+  g.textAlign = align; g.textBaseline = 'alphabetic';
+  g.fillText(fitText(g, text, maxW), x, y);
+}
+function uiToast(g, W, y){
+  if(!hudToastMsg || performance.now() > hudToastUntil) return;
+  g.font = `bold 32px ${UI_FONT}`;
+  const tw = Math.min(W - 40, g.measureText(hudToastMsg).width + 70);
+  g.fillStyle = 'rgba(95,112,82,0.95)';
+  roundRectPath(g, (W - tw) / 2, y, tw, 58, 29); g.fill();
+  uiText(g, hudToastMsg, W / 2, y + 40, { size: 32, color: '#EAE7DC', bold: true, maxW: tw - 40 });
+}
+function currentModeLabel(){
+  return northMode ? '🧭 北合わせ中 — 北に向けてトリガー'
+       : groundMode ? '⛰ 地面の記録中 — 先端を地面に当ててトリガー'
+       : measureMode ? '📐 計測中 — 2点をトリガーで指定' : '';
+}
+
+/* ---------- HUD(視線の下に付いてくる操作盤) ---------- */
 function drawHUD(){
-  const canvas = hud.userData.canvas;
+  const { canvas } = hud.userData;
   const g = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height, F = '"Zen Kaku Gothic New", sans-serif';
+  const W = canvas.width, H = canvas.height;
+  hud.userData.buttons = [];
   g.clearRect(0, 0, W, H);
-  g.fillStyle = 'rgba(35,39,31,0.82)';
-  roundRectPath(g, 0, 0, W, H - 80, 40); g.fill();
-  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  g.fillStyle = 'rgba(35,39,31,0.86)';
+  roundRectPath(g, 0, 0, W, 290, 36); g.fill();
 
   const m = models[activeIndex];
   const w = modelWeight(m);
-  g.fillStyle = '#EAE7DC';
-  g.font = `bold 52px ${F}`;
-  g.fillText(fitText(g, `◀B　${m ? m.name : '—'}　A▶`, W - 60), W/2, 74);
+  uiButton(hud, g, 16, 14, 90, 76, '◀', 'hud:prev', { size: 36 });
+  uiButton(hud, g, W - 106, 14, 90, 76, '▶', 'hud:next', { size: 36 });
+  uiText(g, m ? m.name : '—', W / 2, 66, { size: 46, color: '#EAE7DC', bold: true, maxW: W - 260 });
   const { n, t, stones } = placedTotals();
-  g.font = `30px ${F}`;
-  g.fillStyle = 'rgba(234,231,220,0.85)';
-  g.fillText(fitText(g, `${m ? fmtDims(m.size) : '—'}${w != null ? '・' + fmtWeight(w) : ''}　／　設置${n}個${stones ? `・石${fmtWeight(t)}` : ''}${plans ? '・' + currentPlan().name : ''}`, W - 60), W/2, 126);
-  // 指している物の情報(寸法・根入れ・重量など)
-  g.font = `bold 32px ${F}`;
-  g.fillStyle = lastTargetText ? '#C9D8B8' : 'rgba(234,231,220,0.45)';
-  g.fillText(fitText(g, lastTargetText || '物に向けると寸法・根入れ・重量を表示', W - 60), W/2, 180);
-  g.font = `25px ${F}`;
-  g.fillStyle = 'rgba(234,231,220,0.66)';
-  g.fillText(`トリガー＝設置／つかむ　グリップ＝削除　スティック左右＝回転・上下＝${scaleLocked ? '根入れ' : '大きさ'}`, W/2, 232);
-  g.fillText('右A/B＝素材切替　右スティック押込＝根入れ⇔大きさ', W/2, 272);
-  g.fillText(`左X＝複製（長押し：全削除）　左Y＝戻す（長押し：終了）`, W/2, 312);
+  uiText(g, `${m ? fmtDims(m.size) : '—'}${w != null ? '・' + fmtWeight(w) : ''}　／　設置${n}個${stones ? `・石${fmtWeight(t)}` : ''}${plans ? '・' + currentPlan().name : ''}`,
+         W / 2, 126, { size: 28, maxW: W - 60 });
+  uiText(g, lastTargetText || '物に向けると寸法・根入れ・重量を表示', W / 2, 168,
+         { size: 28, bold: true, color: lastTargetText ? '#C9D8B8' : 'rgba(234,231,220,0.45)', maxW: W - 60 });
+  const bw = (W - 16 * 5) / 4;
+  uiButton(hud, g, 16,                 190, bw, 84, '素材を選ぶ', 'hud:palette', { on: uiPanelName === 'palette' });
+  uiButton(hud, g, 16 + (bw + 16),     190, bw, 84, '☰ メニュー', 'hud:menu', { on: !!uiPanelName && uiPanelName !== 'palette' });
+  uiButton(hud, g, 16 + (bw + 16) * 2, 190, bw, 84, scaleLocked ? '上下＝根入れ' : '上下＝大きさ', 'hud:stick');
+  uiButton(hud, g, 16 + (bw + 16) * 3, 190, bw, 84, '↶ 戻す', 'hud:undo');
 
-  if(hudToastMsg && performance.now() < hudToastUntil){
-    g.font = `bold 32px ${F}`;
-    const tw = Math.min(W - 40, g.measureText(hudToastMsg).width + 70);
-    g.fillStyle = 'rgba(95,112,82,0.95)';
-    roundRectPath(g, (W - tw) / 2, H - 66, tw, 58, 29); g.fill();
-    g.fillStyle = '#EAE7DC';
-    g.fillText(fitText(g, hudToastMsg, tw - 40), W/2, H - 26);
+  let y = 304;
+  if(selectedObj){   // 選択中の物の操作(手でも操作できるように)
+    g.fillStyle = 'rgba(35,39,31,0.86)';
+    roundRectPath(g, 0, y, W, 100, 30); g.fill();
+    const acts = [['↺15°', 'obj:rotl'], ['↻15°', 'obj:rotr'], [scaleLocked ? '▼5cm' : '縮小', 'obj:down'], [scaleLocked ? '▲5cm' : '拡大', 'obj:up'],
+                  ['複製', 'obj:dup'], ['削除', 'obj:del'], ['✕', 'obj:desel']];
+    const ow = (W - 16 * (acts.length + 1)) / acts.length;
+    acts.forEach(([label, act], i) => uiButton(hud, g, 16 + i * (ow + 16), y + 12, ow, 76, label, act, { size: 28, warn: act === 'obj:del' }));
+    y += 112;
   }
+  const mode = currentModeLabel();
+  if(mode){   // いまのモードと、押して抜けるボタン
+    uiButton(hud, g, 16, y, W - 32, 64, `${mode}　✕`, 'hud:mode-exit', { warn: true, size: 28 });
+    y += 76;
+  }
+  uiToast(g, W, Math.min(y + 4, H - 62));
   hud.userData.tex.needsUpdate = true;
 }
+
+/* ---------- パネル(目の前に固定して開く) ---------- */
+const PAL_PER_PAGE = 12;
+function panelFrame(g, W, H, title){
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = 'rgba(35,39,31,0.9)';
+  roundRectPath(g, 0, 0, W, H, 40); g.fill();
+  uiText(g, title, 40, 76, { size: 44, color: '#EAE7DC', bold: true, align: 'left' });
+  uiButton(uiPanel, g, W - 124, 24, 100, 70, '✕', 'nav:close', { size: 34 });
+}
+function drawPanel(){
+  const { canvas } = uiPanel.userData;
+  const g = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height, P = uiPanel;
+  P.userData.buttons = [];
+  const back = () => uiButton(P, g, 40, H - 170, 260, 84, '← メニュー', 'nav:menu');
+  if(uiPanelName === 'palette'){
+    panelFrame(g, W, H, '素材を選ぶ');
+    const tw = (W - 40 * 2 - 10 * (PAL_TABS.length - 1)) / PAL_TABS.length;
+    PAL_TABS.forEach((t, i) => uiButton(P, g, 40 + i * (tw + 10), 116, tw, 64, t, 'pal:tab:' + t, { on: t === palTab3D, size: 26 }));
+    const list = models.map((m, i) => ({ m, i })).filter(({ m }) =>
+      palTab3D === '読み込み' ? !(m.preset && !m.real) : palTab3D === 'すべて' || categoryOf(m) === palTab3D);
+    const pages = Math.max(1, Math.ceil(list.length / PAL_PER_PAGE));
+    palPage = Math.min(palPage, pages - 1);
+    const cw = (W - 40 * 2 - 16 * 3) / 4, ch = 200;
+    list.slice(palPage * PAL_PER_PAGE, (palPage + 1) * PAL_PER_PAGE).forEach(({ m, i }, k) => {
+      if(m.thumb && !m.thumbImg){ m.thumbImg = new Image(); m.thumbImg.onload = markUIDirty; m.thumbImg.src = m.thumb; }
+      const w = modelWeight(m);
+      uiButton(P, g, 40 + (k % 4) * (cw + 16), 200 + Math.floor(k / 4) * (ch + 14), cw, ch, m.name, 'pal:pick:' + i,
+               { on: i === activeIndex, img: m.thumbImg, sub: `高${fmtLen(m.size.y)}${w != null ? '・' + fmtWeight(w) : ''}`, size: 26 });
+    });
+    if(!list.length) uiText(g, 'この分類の素材はありません', W / 2, 400, { size: 30 });
+    uiButton(P, g, 40, H - 170, 200, 84, '◀ 前', 'pal:page-');
+    uiText(g, `${palPage + 1} / ${pages}`, W / 2, H - 116, { size: 30 });
+    uiButton(P, g, W - 240, H - 170, 200, 84, '次 ▶', 'pal:page+');
+  }else if(uiPanelName === 'menu'){
+    panelFrame(g, W, H, 'メニュー');
+    const items = [
+      ['📐 距離を計測', 'menu:measure', { on: measureMode }],
+      ['☀ 季節・日当たり・成長', 'menu:sun'],
+      ['⛰ 地面の起伏・北合わせ', 'menu:ground'],
+      [`📋 案の切替・比較（いま: ${plans ? currentPlan().name : '—'}）`, 'menu:plan'],
+      ['？ 操作ヘルプ', 'menu:help'],
+      [clearArmed() ? '🗑 もう一度押すと全削除' : '🗑 全削除', 'menu:clear', { warn: true }],
+    ];
+    items.forEach(([label, act, opt], i) => uiButton(P, g, 40, 126 + i * 118, W - 80, 100, label, act, { size: 34, ...(opt || {}) }));
+  }else if(uiPanelName === 'sun'){
+    panelFrame(g, W, H, '季節・日当たり・成長');
+    const row = (y, label, minus, plus) => {
+      uiButton(P, g, 40, y, 150, 90, '◀', minus, { size: 36 });
+      uiText(g, label, W / 2, y + 60, { size: 40, color: '#EAE7DC', bold: true, maxW: W - 420 });
+      uiButton(P, g, W - 190, y, 150, 90, '▶', plus, { size: 36 });
+    };
+    row(120, `${sunState.month}月${sunState.day}日`, 'sun:month-', 'sun:month+');
+    row(226, fmtHour(sunState.hour), 'sun:hour-', 'sun:hour+');
+    row(332, `樹木: ${fmtYears(sunState.years || 0)}`, 'sun:years-', 'sun:years+');
+    const { az, el } = sunAt(sunState.hour);
+    uiText(g, el > 0 ? `太陽 高度${Math.round(el)}°・方位 ${DIR8[Math.round(az / 45) % 8]}（${Math.round(az)}°）` : (sunState.hour < 12 ? '日の出前（影なし）' : '日没後（影なし）'),
+           W / 2, 486, { size: 30 });
+    uiText(g, `${sunTimes()}　季節: ${seasonNote(sunState.month)}`, W / 2, 530, { size: 28, maxW: W - 80 });
+    uiText(g, northVec ? '北: 設定済み' : '※ 北が未設定です（影の向きは仮）', W / 2, 574, { size: 26, color: northVec ? 'rgba(234,231,220,0.6)' : '#E0A58F' });
+    const bw = (W - 80 - 32) / 3;
+    uiButton(P, g, 40, 610, bw, 90, sunPlayTimer ? '■ 停止' : '▶ 1日の影', 'sun:play', { on: !!sunPlayTimer });
+    uiButton(P, g, 40 + bw + 16, 610, bw, 90, '現在の日時', 'sun:now');
+    uiButton(P, g, 40 + (bw + 16) * 2, 610, bw, 90, '北を合わせる', 'sun:north');
+    back();
+  }else if(uiPanelName === 'ground'){
+    panelFrame(g, W, H, '地面の起伏・北合わせ');
+    uiText(g, groundSummary(), W / 2, 170, { size: 32, color: '#EAE7DC', bold: true });
+    uiText(g, '記録モードで、コントローラーの先端を地面に軽く当ててトリガー', W / 2, 220, { size: 26 });
+    uiText(g, '斜面の上と下・段差の上下など数か所を記録すると、その起伏に沿って置けます', W / 2, 258, { size: 24, color: 'rgba(234,231,220,0.6)' });
+    const bw = (W - 80 - 16) / 2;
+    uiButton(P, g, 40, 300, bw, 100, groundMode ? '● 記録中（押して終了）' : '● 記録モード', 'ground:record', { on: groundMode });
+    uiButton(P, g, 40 + bw + 16, 300, bw, 100, terrainShown ? '地面を隠す' : '地面を表示', 'ground:show', { on: terrainShown });
+    uiButton(P, g, 40, 416, bw, 100, '最後の点を消す', 'ground:undo');
+    uiButton(P, g, 40 + bw + 16, 416, bw, 100, 'すべて消す', 'ground:clear', { warn: true });
+    uiText(g, '北の方角を設定すると、日当たりの影が実際の向きになります', W / 2, 590, { size: 26 });
+    uiButton(P, g, 40, 616, W - 80, 100, '🧭 北を合わせる（北に向けてトリガー）', 'sun:north');
+    back();
+  }else if(uiPanelName === 'plan'){
+    panelFrame(g, W, H, '案の切替・比較');
+    const cur = currentPlan();
+    const ghost = ghostPlanId ? plans.list.find(p => p.id === ghostPlanId) : null;
+    uiText(g, `表示中: ${cur.name}（${cur.items.length}個）${ghost ? `　半透明: ${ghost.name}` : ''}`, W / 2, 168, { size: 30 });
+    plans.list.forEach((p, i) => uiButton(P, g, 40 + (i % 3) * 320, 200 + Math.floor(i / 3) * 112, 304, 96,
+      `${p.name}（${p.items.length}）`, 'plan:switch:' + p.id, { on: p.id === plans.active, size: 30 }));
+    const bw = (W - 80 - 16) / 2;
+    uiButton(P, g, 40, 450, bw, 100, ghost ? '重ね表示をやめる' : '前の案を重ねる', 'plan:ghost', { on: !!ghost });
+    uiButton(P, g, 40 + bw + 16, 450, bw, 100, '複製して新しい案', 'plan:dup');
+    uiText(g, '名前の変更・削除はMRを終えてから、開始前の画面で行えます', W / 2, 620, { size: 24, color: 'rgba(234,231,220,0.6)' });
+    back();
+  }else if(uiPanelName === 'help'){
+    panelFrame(g, W, H, '操作ヘルプ');
+    [
+      'トリガー（床に向けて）… 選択中の素材を設置',
+      'トリガー（物に向けて押したまま）… つかんで移動',
+      'グリップ（物に向けて）… 削除',
+      'スティック左右 … 回転　／　上下 … 根入れ（または大きさ）',
+      '右 A / B … 素材を次 / 前へ',
+      '右スティック押し込み … 上下＝根入れ ⇔ 大きさ',
+      '左 X … 複製（長押しで全削除）',
+      '左 Y … 元に戻す（長押しでMR終了）',
+      '手で操作 … 親指と人差し指でつまむ＝トリガー',
+      '　回転・根入れ・複製・削除は操作盤の下段で',
+    ].forEach((line, i) => uiText(g, line, 60, 170 + i * 58, { size: 30, align: 'left', maxW: W - 120 }));
+    back();
+  }
+  uiToast(g, W, H - 62);
+  uiPanel.userData.tex.needsUpdate = true;
+}
+
+function openUIPanel(name){
+  if(!hudActive) return;
+  uiPanelName = name;
+  // 目の前(視線の水平方向・少し下)に固定して開く
+  const cam = renderer.xr.getCamera();
+  _uiHead.setFromMatrixPosition(cam.matrixWorld);
+  _uiFwd.set(0, 0, -1).transformDirection(cam.matrixWorld).setY(0).normalize();
+  uiPanel.position.copy(_uiHead).addScaledVector(_uiFwd, 0.85);
+  uiPanel.position.y = _uiHead.y - 0.12;
+  uiPanel.lookAt(_uiHead);
+  uiPanel.visible = true;
+  hud.visible = false;
+  markUIDirty();
+}
+function closeUIPanel(){
+  if(!uiPanelName) return;
+  uiPanelName = null;
+  uiPanel.visible = false;
+  hud.visible = hudActive;
+  hudSnap = true;
+  markUIDirty();
+}
+
+/* レーザーが当たったボタンの処理 */
+function handleUIAction(act){
+  const [grp, cmd, arg] = act.split(':');
+  if(grp === 'nav'){ cmd === 'menu' ? openUIPanel('menu') : closeUIPanel(); return; }
+  if(grp === 'hud'){
+    if(cmd === 'prev') cycleModel(-1);
+    if(cmd === 'next') cycleModel(1);
+    if(cmd === 'palette') uiPanelName === 'palette' ? closeUIPanel() : openUIPanel('palette');
+    if(cmd === 'menu') uiPanelName ? closeUIPanel() : openUIPanel('menu');
+    if(cmd === 'stick') toggleStickMode();
+    if(cmd === 'undo') undo();
+    if(cmd === 'mode-exit'){ northMode = false; groundMode = false; setMeasureMode(false); toast('モードを終了しました'); }
+  }
+  if(grp === 'obj') objAction(cmd);
+  if(grp === 'menu'){
+    if(cmd === 'measure'){ toggleMeasure(); if(measureMode) closeUIPanel(); }
+    if(cmd === 'sun' || cmd === 'ground' || cmd === 'plan' || cmd === 'help') openUIPanel(cmd);
+    if(cmd === 'clear' && requestClearAll()) closeUIPanel();
+  }
+  if(grp === 'sun') sunAction(cmd);
+  if(grp === 'ground') groundAction(cmd);
+  if(grp === 'plan') planAction(arg ? `${cmd}:${arg}` : cmd);
+  if(grp === 'pal'){
+    if(cmd === 'tab'){ palTab3D = arg; palPage = 0; }
+    if(cmd === 'page-') palPage = Math.max(0, palPage - 1);
+    if(cmd === 'page+') palPage++;
+    if(cmd === 'pick'){
+      activeIndex = Number(arg);
+      refreshXRLabel(); refreshLibraryUI();
+      closeUIPanel();
+      toast(`${models[activeIndex].name} — 床に向けてトリガーで設置`);
+    }
+  }
+  markUIDirty();
+}
+
+/* ---------- レーザーとUIの当たり判定 ---------- */
+const _uiRay = new THREE.Raycaster();
+function uiHitFor(c){
+  if(!hudActive) return null;
+  const boards = [hud, uiPanel].filter(b => b.visible);
+  if(!boards.length) return null;
+  tmpMat.identity().extractRotation(c.matrixWorld);
+  _uiRay.ray.origin.setFromMatrixPosition(c.matrixWorld);
+  _uiRay.ray.direction.set(0, 0, -1).applyMatrix4(tmpMat);
+  const hit = _uiRay.intersectObjects(boards, false)[0];
+  if(!hit || !hit.uv) return null;
+  const { canvas, buttons } = hit.object.userData;
+  const x = hit.uv.x * canvas.width, y = (1 - hit.uv.y) * canvas.height;
+  const btn = buttons.find(b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) || null;
+  return { board: hit.object, distance: hit.distance, act: btn ? btn.act : null };
+}
+function pulse(c, strength = 0.35, ms = 25){
+  const act = c.userData.inputSource && c.userData.inputSource.gamepad && c.userData.inputSource.gamepad.hapticActuators;
+  if(act && act[0] && act[0].pulse) act[0].pulse(strength, ms);
+}
+
+/* 毎フレーム: 各コントローラーのレーザーがUIに当たっているか調べ、ボタンを強調・レーザーを短くする */
+function updateUIHits(){
+  const hovers = new Map([[hud, null], [uiPanel, null]]);
+  for(const c of controllers){
+    const hit = c.userData.inputSource ? uiHitFor(c) : null;
+    c.userData.uiHit = hit;
+    const line = c.children[0];
+    if(line) line.scale.z = hit ? Math.max(0.02, hit.distance / 4) : 1;
+    if(hit && hit.act && !hovers.get(hit.board)) hovers.set(hit.board, hit.act);
+  }
+  for(const [board, act] of hovers){
+    if(board.userData.hoverAct !== act){ board.userData.hoverAct = act; board === hud ? hudDirty = true : panelDirty = true; }
+  }
+}
+
+/* 毎フレーム: HUDは視線の下に「ゆっくり付いてくる」。見回す程度では動かないので押しやすい */
 function updateHUD(){
   if(!hudActive) return;
-  if(hudToastMsg && performance.now() > hudToastUntil){ hudToastMsg = ''; hudDirty = true; }
-  if(hudDirty){ drawHUD(); hudDirty = false; }
+  if(hudToastMsg && performance.now() > hudToastUntil){ hudToastMsg = ''; markUIDirty(); }
+  if(hudDirty && hud.visible){ drawHUD(); hudDirty = false; }
+  if(panelDirty && uiPanel.visible){ drawPanel(); panelDirty = false; }
   const cam = renderer.xr.getCamera();
-  hudCamPos.setFromMatrixPosition(cam.matrixWorld);
-  hudFwd.set(0, 0, -1).transformDirection(cam.matrixWorld);
-  hudTarget.copy(hudCamPos).addScaledVector(hudFwd, 1.15);
-  hudTarget.y -= 0.22;
-  if(hudSnap){ hud.position.copy(hudTarget); hudSnap = false; }
-  else hud.position.lerp(hudTarget, 0.08);
-  hud.lookAt(hudCamPos);
+  _uiHead.setFromMatrixPosition(cam.matrixWorld);
+  _uiFwd.set(0, 0, -1).transformDirection(cam.matrixWorld).setY(0);
+  if(_uiFwd.lengthSq() < 1e-4) return;
+  _uiFwd.normalize();
+  const goal = _uiHead.clone().addScaledVector(_uiFwd, 0.8);
+  goal.y = _uiHead.y - 0.42;
+  if(hudSnap || hud.userData.anchor === undefined){ hud.userData.anchor = goal.clone(); hud.position.copy(goal); hudSnap = false; }
+  else if(goal.distanceTo(hud.userData.anchor) > 0.45) hud.userData.anchor.copy(goal);   // 大きく向きを変えたら付いてくる
+  hud.position.lerp(hud.userData.anchor, 0.06);
+  hud.lookAt(_uiHead);
 }
 
 /* ---------- 操作 ---------- */
 function onSelectStart(c){
   if(!renderer.xr.isPresenting) return;
+  // レーザーが3D UIに当たっていれば、ボタンを押す(設置・つかむより優先)
+  if(c.userData.uiHit){
+    c.userData.uiPress = true;
+    c.userData.placeOnRelease = false;
+    if(c.userData.uiHit.act){ pulse(c); handleUIAction(c.userData.uiHit.act); }
+    return;
+  }
   activeController = c;
   if(northMode){ northMode = false; updateModeChip(); c.userData.placeOnRelease = false; setNorthFrom(c); return; }
   if(groundMode){ c.userData.placeOnRelease = false; recordGroundPoint(c); return; }
@@ -2583,6 +2863,7 @@ function onSelectStart(c){
 
 function onSelectEnd(c){
   if(!renderer.xr.isPresenting) return;
+  if(c.userData.uiPress){ c.userData.uiPress = false; return; }
   if(groundMode) return;
   if(measureMode){ c.userData.placeOnRelease = false; return; }
   if(grabbed && activeController === c){
@@ -2612,7 +2893,7 @@ function onSelectEnd(c){
 }
 
 function onSqueeze(c){
-  if(!renderer.xr.isPresenting) return;
+  if(!renderer.xr.isPresenting || c.userData.uiHit) return;
   const obj = objectUnderRay(c);
   if(obj){
     pushUndo();
@@ -2700,7 +2981,7 @@ function refreshXRLabel(){
   xrModelEl.textContent = m ? m.name : '—';
   xrDimsEl.textContent  = m ? fmtDims(m.size) : '—';
   document.getElementById('xr-model-thumb').src = (m && m.thumb) || '';
-  hudDirty = true;
+  markUIDirty();
 }
 /* 設置物の個数と、石(重量が出せるもの)の合計重量 */
 function placedTotals(){
@@ -2714,7 +2995,7 @@ function placedTotals(){
 function updateCount(){
   const { n, t, stones } = placedTotals();
   xrCountEl.textContent = n + '個' + (stones ? `・石${fmtWeight(t)}` : '');
-  hudDirty = true;
+  markUIDirty();
 }
 
 /* スティック上下の役割切替: 根入れ(実寸ロック) / 拡縮 */
@@ -2784,7 +3065,7 @@ function toast(msg){
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
   hudToastMsg = msg;
   hudToastUntil = performance.now() + 1800;
-  hudDirty = true;
+  markUIDirty();
 }
 function cycleModel(dir){
   if(!models.length) return;
@@ -2834,6 +3115,7 @@ function updateModeChip(){
               : measureMode ? '📐 計測中 — 2点をトリガーで指定' : '';
   modeChip.textContent = label ? `${label}　✕` : '';
   modeChip.classList.toggle('on', !!label);
+  markUIDirty();
 }
 function setMeasureMode(on){
   measureMode = on;
@@ -2852,17 +3134,29 @@ modeChip.addEventListener('click', () => {
 modelBtn.addEventListener('click', () => togglePanel(paletteEl));
 menuBtn.addEventListener('click', () => togglePanel(menuPanel));
 
-/* 全削除は2回タップで確定(誤操作防止) */
+/* 全削除は2回タップで確定(誤操作防止)。1回目は3秒間「確認待ち」にする */
 let clearArmedUntil = 0;
+const clearArmed = () => performance.now() < clearArmedUntil;
+function requestClearAll(){
+  if(!clearArmed()){
+    clearArmedUntil = performance.now() + 3000;
+    toast('もう一度押すと全削除します');
+    setTimeout(markUIDirty, 3050);
+    return false;
+  }
+  clearArmedUntil = 0;
+  clearAllPlaced();
+  return true;
+}
+function toggleMeasure(){
+  setMeasureMode(!measureMode);
+  toast(measureMode ? '計測モード: 2点をトリガーで指定' : '計測モードを終了しました');
+}
 menuPanel.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-m]');
   if(!b) return;
   const act = b.dataset.m;
-  if(act === 'measure'){
-    setMeasureMode(!measureMode);
-    closeXRPanels();
-    toast(measureMode ? '計測モード: 2点をトリガーで指定' : '計測モードを終了しました');
-  }
+  if(act === 'measure'){ toggleMeasure(); closeXRPanels(); }
   if(act === 'sun') togglePanel(sunPanel);
   if(act === 'ground') togglePanel(groundPanel);
   if(act === 'plan') togglePanel(planPanel);
@@ -2871,18 +3165,10 @@ menuPanel.addEventListener('click', (e) => {
     b.textContent = helpEl.classList.contains('hidden') ? '？ 操作ヘルプの表示' : '？ 操作ヘルプを隠す';
   }
   if(act === 'clear'){
-    const now = performance.now();
-    if(now > clearArmedUntil){
-      clearArmedUntil = now + 3000;
-      b.classList.add('confirm');
-      b.textContent = '🗑 もう一度タップで全削除';
-      setTimeout(() => { b.classList.remove('confirm'); b.textContent = '🗑 全削除'; }, 3000);
-      return;
-    }
-    clearArmedUntil = 0;
-    b.classList.remove('confirm'); b.textContent = '🗑 全削除';
-    closeXRPanels();
-    clearAllPlaced();
+    if(requestClearAll()){ closeXRPanels(); b.classList.remove('confirm'); b.textContent = '🗑 全削除'; return; }
+    b.classList.add('confirm');
+    b.textContent = '🗑 もう一度タップで全削除';
+    setTimeout(() => { b.classList.remove('confirm'); b.textContent = '🗑 全削除'; }, 3000);
   }
 });
 
@@ -2993,12 +3279,16 @@ function refreshObjBar(){
   document.getElementById('xr-obj-down').textContent = scaleLocked ? '▼ 5cm' : '縮小';
   document.getElementById('xr-obj-up').textContent = scaleLocked ? '▲ 5cm' : '拡大';
   document.getElementById('xr-obj-name').textContent = selectedObj ? (selectedObj.userData.modelName || '') : '';
+  markUIDirty();
 }
 objBar.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-o]');
+  if(b) objAction(b.dataset.o);
+});
+/* 選択中の物の操作(画面下のバー・3Dメニュー共通) */
+function objAction(act){
   const o = selectedObj;
-  if(!b || !o) return;
-  const act = b.dataset.o;
+  if(!o) return;
   if(act === 'desel'){ setSelected(null); return; }
   if(act === 'dup'){ duplicateTarget(o); return; }
   if(act === 'del'){
@@ -3029,7 +3319,8 @@ objBar.addEventListener('click', (e) => {
     }
   }
   scheduleSave();
-});
+  markUIDirty();
+}
 
 /* ================= 日当たり(太陽の位置と影) ================= */
 const LS_SUN = 'sekitei.sun.v1';
@@ -3166,6 +3457,7 @@ function applySun(){
 }
 
 function refreshSunUI(){
+  markUIDirty();
   const { az, el } = sunAt(sunState.hour);
   const dateText = `${sunState.month}月${sunState.day}日`;
   const info = el > 0
@@ -3248,8 +3540,10 @@ document.getElementById('sun-geo-btn').addEventListener('click', () => {
 const sunPanel = document.getElementById('xr-sun-panel');
 sunPanel.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-sun]');
-  if(!b) return;
-  const act = b.dataset.sun;
+  if(b) sunAction(b.dataset.sun);
+});
+/* 季節・日当たりの操作(画面パネル・3Dメニュー共通) */
+function sunAction(act){
   if(act === 'month-') setSunMonth(sunState.month - 1);
   if(act === 'month+') setSunMonth(sunState.month + 1);
   if(act === 'hour-') setSunHour(sunState.hour - 0.5);
@@ -3264,10 +3558,12 @@ sunPanel.addEventListener('click', (e) => {
     setMeasureMode(false); groundMode = false;
     northMode = true;
     closeXRPanels();
+    closeUIPanel();
     updateModeChip();
     toast('北の方角にコントローラーを向けてトリガー');
   }
-});
+  markUIDirty();
+}
 
 /* ---------- 地面の記録(MR操作) ---------- */
 let groundMode = false;
@@ -3295,24 +3591,31 @@ function refreshGroundUI(){
   if(info) info.textContent = `${summary}\n${groundMode ? '記録中: コントローラーの先端を地面に軽く当ててトリガー' : '「記録モード」で地面の高さを測ります'}`;
   groundPanel.querySelector('[data-g="record"]').classList.toggle('on', groundMode);
   groundPanel.querySelector('[data-g="show"]').classList.toggle('on', terrainShown);
+  markUIDirty();
 }
 
 const planPanel = document.getElementById('xr-plan-panel');
 planPanel.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-p]');
-  if(!b) return;
-  if(b.dataset.p === 'ghost') toggleGhost();
-  if(b.dataset.p === 'dup') newPlan({ copy: true });
+  if(b) planAction(b.dataset.p);
 });
+function planAction(act){
+  if(act === 'ghost') toggleGhost();
+  if(act === 'dup') newPlan({ copy: true });
+  if(act.startsWith('switch:')) switchPlan(act.slice(7));
+  markUIDirty();
+}
 groundPanel.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-g]');
-  if(!b) return;
-  const act = b.dataset.g;
+  if(b) groundAction(b.dataset.g);
+});
+/* 地面の記録の操作(画面パネル・3Dメニュー共通) */
+function groundAction(act){
   if(act === 'record'){
     const on = !groundMode;
     setMeasureMode(false); northMode = false;
     groundMode = on;
-    if(on){ setTerrainShown(true); closeXRPanels(); }
+    if(on){ setTerrainShown(true); closeXRPanels(); closeUIPanel(); }
     updateModeChip();
     toast(on ? '記録モード: 先端を地面に当ててトリガー' : '記録モードを終了しました');
   }
@@ -3320,7 +3623,8 @@ groundPanel.addEventListener('click', (e) => {
   if(act === 'undo' && groundPts.length){ setGroundPts(groundPts.slice(0, -1)); toast('最後の点を消しました'); }
   if(act === 'clear' && groundPts.length){ setGroundPts([]); toast('地面の記録を消しました（平らな床に戻ります）'); }
   refreshGroundUI();
-});
+  markUIDirty();
+}
 document.getElementById('ground-clear-btn').addEventListener('click', () => {
   if(groundPts.length && confirm('地面の記録を消して、平らな床に戻しますか？')) setGroundPts([]);
 });
@@ -3359,7 +3663,9 @@ if(new URLSearchParams(location.search).has('debug')){
                        sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun,
                        setGrowYears, growthFactor, setGroundPts, terrainHeight, setTerrainShown, updateClipPlanes, floorPointFor,
                        switchPlan, newPlan, getPlans: () => plans, ghostGroup, renderPlanImage, refreshPalette, updateModeChip, setSelected, refreshObjBar,
-                       getSelected: () => selectedObj, drawHUD, hud };
+                       getSelected: () => selectedObj, drawHUD, hud,
+                       uiPanel, openUIPanel, closeUIPanel, drawPanel, handleUIAction, uiHitFor,
+                       setHudActive: (on) => { hudActive = on; hud.visible = on; hudSnap = true; markUIDirty(); } };
 }
 
 /* ================= メインループ ================= */
@@ -3370,10 +3676,11 @@ renderer.setAnimationLoop((t, frame) => {
 
   if(renderer.xr.isPresenting){
     if(frame) updateAnchor(frame);
+    updateUIHits();
     hovered = null;
     const order = activeController ? [activeController, ...controllers.filter(c => c !== activeController)] : controllers;
     for(const c of order){
-      if(!c.userData.inputSource) continue;
+      if(!c.userData.inputSource || c.userData.uiHit) continue;
       const r = objectUnderRay(c);
       if(r){ hovered = r; break; }
     }
@@ -3383,6 +3690,7 @@ renderer.setAnimationLoop((t, frame) => {
       if(!c.userData.inputSource) continue;
       const p = floorPointFor(c, frame);
       c.userData.lastFloorPoint = p;
+      if(c.userData.uiHit) continue;   // UIを指している手の照準は出さない
       if(p && (c === activeController || !reticlePoint)) reticlePoint = p;
     }
     if(grabbed && activeController){
