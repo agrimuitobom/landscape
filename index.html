@@ -1205,6 +1205,18 @@ function fmtWeight(t){
   return t >= 1 ? `約${t.toFixed(1)}t` : `約${Math.max(10, Math.round(t * 100) * 10)}kg`;
 }
 
+/* 樹木の葉(リーフカード)用の材質調整。GLB の材質 extras に foliage:true があるものに適用する。
+   両面表示の葉は裏から見ると法線が反転して黒ずむため、葉だけ反転させない(樹冠全体が柔らかく明るく見える) */
+function applyFoliage(mat){
+  if(!mat || !mat.userData || !mat.userData.foliage) return mat;
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>',
+      THREE.ShaderChunk.normal_fragment_begin.replace('\t\tnormal *= faceDirection;\n', ''));
+  };
+  mat.customProgramCacheKey = () => 'foliage';
+  return mat;
+}
+
 /* 底面中心を原点に正規化してテンプレート化 */
 function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='', kind='none', density=null } = {}){
   const box = new THREE.Box3().setFromObject(rawRoot);
@@ -1216,6 +1228,7 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, 
   rawRoot.traverse(o => {
     if(o.isMesh){
       o.castShadow = o.material !== MAT.water && !o.userData.noShadow;   // 水面・地面材は影を落とさない
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach(applyFoliage);
       o.receiveShadow = true;
     }
   });
@@ -1622,7 +1635,8 @@ function updateAnchor(frame){
 function prepareInstance(inst){
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   inst.userData.clipPlane = plane;
-  const withClip = (mat) => { const c = mat.clone(); c.clippingPlanes = [plane]; c.clipShadows = true; return c; };
+  // 複製では onBeforeCompile が引き継がれないため、葉の材質調整をかけ直す
+  const withClip = (mat) => { const c = applyFoliage(mat.clone()); c.clippingPlanes = [plane]; c.clipShadows = true; return c; };
   inst.traverse(o => {
     if(o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(withClip) : withClip(o.material);
   });
