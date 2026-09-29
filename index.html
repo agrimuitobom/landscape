@@ -368,8 +368,8 @@
       <button class="ghost" id="view-image-btn">3D画像を保存（PNG）</button>
     </div>
 
-    <label class="opt-row"><input type="checkbox" id="opt-occlusion" checked>
-      <span>実物による遮蔽<small>現実の木や人の後ろに置いた物が隠れます（Depth API・試験機能）</small></span></label>
+    <label class="opt-row"><input type="checkbox" id="opt-occlusion">
+      <span>実物による遮蔽（試験機能・初期はオフ）<small>現実の木や人の後ろに置いた物が隠れます（Depth API）。オンにして置いた物が見えなくなる場合はオフにしてください</small></span></label>
 
     <button id="start-btn" disabled>MRで開始</button>
 
@@ -460,6 +460,8 @@
       <button data-m="sun">☀ 季節・日当たり・成長</button>
       <button data-m="ground">⛰ 地面の起伏</button>
       <button data-m="plan" id="menu-plan">📋 案の切替・比較</button>
+      <button data-m="rebase">📍 基準点をここにし直す（配置を目の前へ）</button>
+      <button data-m="occlusion">👁 実物による遮蔽の一時停止／再開</button>
       <button data-m="help">？ 操作ヘルプの表示</button>
       <button data-m="clear" class="warn">🗑 全削除</button>
     </div>
@@ -1421,7 +1423,9 @@ const supportEl = document.getElementById('support');
 const startBtn = document.getElementById('start-btn');
 /* 実物による遮蔽の設定(この端末に記憶) */
 const occlusionOpt = document.getElementById('opt-occlusion');
-try{ occlusionOpt.checked = localStorage.getItem('sekitei.occlusion') !== 'off'; }catch(err){}
+let occlusionHidden = false;   // MR中にメニューから遮蔽を一時停止したとき true
+// 端末によっては深度データの扱いが合わず仮想物がすべて隠れることがあるため、明示的にオンにした場合だけ使う
+try{ occlusionOpt.checked = localStorage.getItem('sekitei.occlusion') === 'on'; }catch(err){}
 occlusionOpt.addEventListener('change', () => {
   try{ localStorage.setItem('sekitei.occlusion', occlusionOpt.checked ? 'on' : 'off'); }catch(err){}
 });
@@ -1543,7 +1547,9 @@ renderer.xr.addEventListener('sessionend', () => {
   hovered = null; grabbed = null;
   boxHelper.visible = false;
   reticle.visible = false;
-  xrAnchor = null; needCreateAnchor = false;
+  if(xrAnchor && xrAnchor.delete) xrAnchor.delete();
+  xrAnchor = null; anchorRequest = null; anchorState = 'none'; anchorRestored = false;
+  occlusionHidden = false;
   anchorRoot.position.set(0, 0, 0);
   anchorRoot.quaternion.identity();
   shadowGround.visible = false;
@@ -1577,43 +1583,90 @@ const placedGroup = new THREE.Group();
 anchorRoot.add(placedGroup);
 
 let xrAnchor = null;
-let needCreateAnchor = false;
+let anchorRequest = null;     // 次のフレームで作るアンカー { pose: XRRigidTransform | null }
+/* 基準点の状態: none(未開始) / restoring(前回の基準点を探索中) / creating(作成中) /
+   located(位置が確定) / unsupported(アンカー非対応。毎回その場が基準) */
+let anchorState = 'none', anchorRestored = false, anchorDeadline = 0;
+const ANCHOR_RESTORE_WAIT_MS = 6000;
 
 async function initAnchor(session){
-  xrAnchor = null;
-  needCreateAnchor = false;
+  xrAnchor = null; anchorRequest = null; anchorRestored = false;
+  anchorRoot.position.set(0, 0, 0);
+  anchorRoot.quaternion.identity();
   const feats = session.enabledFeatures;
-  if(feats && !feats.includes('anchors')) return;
+  if((feats && !feats.includes('anchors')) || !window.XRRigidTransform){ anchorState = 'unsupported'; return; }
   const handle = localStorage.getItem(LS_ANCHOR);
   if(handle && session.restorePersistentAnchor){
-    try{
-      const a = await session.restorePersistentAnchor(handle);
-      if(xrSession === session){ xrAnchor = a; toast('前回の基準点に位置合わせしました'); }
-      return;
-    }catch(err){
-      console.warn('永続アンカーの復元に失敗（作り直します）:', err);
-      localStorage.removeItem(LS_ANCHOR);
-    }
+    // 前回の基準点を探す。見つかるまで設置は待ってもらう(途中で見つかると、置いた物がまとめて動いてしまうため)
+    anchorState = 'restoring';
+    anchorDeadline = performance.now() + ANCHOR_RESTORE_WAIT_MS;
+    toast('前回の基準点を探しています…');
+    session.restorePersistentAnchor(handle).then(a => {
+      if(xrSession !== session) return;
+      if(anchorState !== 'restoring'){ if(a && a.delete) a.delete(); return; }   // 待ち切れず諦めた後に見つかった分は使わない
+      xrAnchor = a;
+    }).catch(err => {
+      console.warn('永続アンカーの復元に失敗:', err);
+      if(xrSession === session && anchorState === 'restoring') giveUpRestore('前回の基準点が見つかりません');
+    });
+    return;
   }
-  if(xrSession === session) needCreateAnchor = true;
+  anchorState = 'creating';
+  anchorRequest = { pose: null };
 }
+function giveUpRestore(msg){
+  if(xrAnchor && xrAnchor.delete) xrAnchor.delete();
+  xrAnchor = null;
+  anchorState = 'creating';
+  anchorRequest = { pose: null };   // 今回のMRの原点を新しい基準点にする
+  toast(`${msg} — 今の位置を基準にします`);
+  markUIDirty();
+}
+/* メニュー「基準点をここにし直す」: 配置全体を、今立っている場所・向いている方向を基準に置き直す */
+function rebaseAnchorHere(){
+  if(!renderer.xr.isPresenting) return;
+  if(anchorState === 'unsupported'){ toast('この端末は基準点(アンカー)に対応していません'); return; }
+  const cam = renderer.xr.getCamera();
+  const head = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld);
+  const fwd = new THREE.Vector3(0, 0, -1).transformDirection(cam.matrixWorld).setY(0);
+  const yaw = fwd.lengthSq() > 1e-6 ? Math.atan2(-fwd.x, -fwd.z) : 0;
+  const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+  anchorRequest = { pose: new XRRigidTransform({ x: head.x, y: 0, z: head.z }, { x: q.x, y: q.y, z: q.z, w: q.w }) };
+  anchorState = 'creating';
+  toast('基準点を今の位置に移しました — 配置が目の前に来ます');
+  markUIDirty();
+}
+/* 基準点が確定していない間は設置・移動を待ってもらう */
+function anchorBusy(){ return anchorState === 'restoring'; }
 
-/* フレーム毎: アンカー作成(初回のみ)とポーズ追従 */
+/* フレーム毎: アンカー作成・探索の期限切れ・ポーズ追従 */
 function updateAnchor(frame){
   const refSpace = renderer.xr.getReferenceSpace();
   if(!refSpace) return;
-  if(needCreateAnchor){
-    needCreateAnchor = false;
-    if(frame.createAnchor){
+  if(anchorState === 'restoring' && performance.now() > anchorDeadline) giveUpRestore('前回の基準点が見つかりません');
+  if(anchorRequest){
+    const req = anchorRequest;
+    anchorRequest = null;
+    if(!frame.createAnchor){ anchorState = 'unsupported'; markUIDirty(); }
+    else{
       const session = xrSession;
-      frame.createAnchor(new XRRigidTransform(), refSpace).then(async (a) => {
-        if(xrSession !== session) return;
+      frame.createAnchor(req.pose || new XRRigidTransform(), refSpace).then(async (a) => {
+        if(xrSession !== session){ if(a.delete) a.delete(); return; }
+        const old = xrAnchor, oldHandle = localStorage.getItem(LS_ANCHOR);
         xrAnchor = a;
+        anchorRestored = false;
+        if(old && old !== a && old.delete) old.delete();
         if(a.requestPersistentHandle){
-          try{ localStorage.setItem(LS_ANCHOR, await a.requestPersistentHandle()); }
-          catch(err){ console.warn('アンカーの永続化に失敗:', err); }
+          try{
+            const h = await a.requestPersistentHandle();
+            localStorage.setItem(LS_ANCHOR, h);
+            if(oldHandle && oldHandle !== h && session.deletePersistentAnchor) session.deletePersistentAnchor(oldHandle).catch(() => {});
+          }catch(err){ console.warn('アンカーの永続化に失敗:', err); }
         }
-      }).catch(err => console.warn('アンカー作成に失敗:', err));
+      }).catch(err => {
+        console.warn('アンカー作成に失敗:', err);
+        if(xrSession === session){ anchorState = 'unsupported'; markUIDirty(); }
+      });
     }
   }
   if(xrAnchor){
@@ -1623,9 +1676,53 @@ function updateAnchor(frame){
         const p = pose.transform.position, q = pose.transform.orientation;
         anchorRoot.position.set(p.x, p.y, p.z);
         anchorRoot.quaternion.set(q.x, q.y, q.z, q.w);
+        if(anchorState !== 'located'){
+          const wasRestoring = anchorState === 'restoring';
+          anchorState = 'located';
+          anchorRestored = wasRestoring;
+          if(wasRestoring) onAnchorRestored();
+          markUIDirty();
+        }
       }
     }catch(err){ /* アンカー消失時はそのまま続行 */ }
   }
+}
+/* 前回の基準点が見つかったとき、配置が遠く離れていれば呼び寄せ方を案内する */
+function onAnchorRestored(){
+  const near = nearestPlaced();
+  if(near && near.dist > 12) toast(`前回の配置は約${Math.round(near.dist)}m先にあります。メニューの「基準点をここにし直す」で目の前に移せます`);
+  else toast('前回の基準点に位置合わせしました');
+}
+
+/* 診断: いちばん近い設置物までの距離と方向(見えないときの手がかり) */
+function nearestPlaced(){
+  if(!placedGroup.children.length) return null;
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  const head = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld);
+  const fwd = new THREE.Vector3(0, 0, -1).transformDirection(cam.matrixWorld).setY(0).normalize();
+  let best = null;
+  const wp = new THREE.Vector3();
+  for(const o of placedGroup.children){
+    o.getWorldPosition(wp);
+    const d = Math.hypot(wp.x - head.x, wp.z - head.z);
+    if(!best || d < best.dist){
+      const dir = new THREE.Vector3(wp.x - head.x, 0, wp.z - head.z).normalize();
+      const ang = Math.atan2(fwd.x * dir.z - fwd.z * dir.x, fwd.x * dir.x + fwd.z * dir.z) * 180 / Math.PI;   // 右が正
+      const side = Math.abs(ang) < 45 ? '前方' : Math.abs(ang) > 135 ? '後ろ' : ang > 0 ? '右' : '左';
+      best = { dist: d, side, obj: o };
+    }
+  }
+  return best;
+}
+function diagnosticsText(){
+  const feats = (xrSession && xrSession.enabledFeatures) || [];
+  const occ = !feats.includes('depth-sensing') ? 'オフ'
+            : !renderer.xr.hasDepthSensing() ? '要求済み（深度データなし）'
+            : occlusionHidden ? '一時停止中' : '有効';
+  const anc = { none: '—', restoring: '前回の基準点を探索中', creating: '作成中', unsupported: '非対応（毎回その場が基準）',
+                located: anchorRestored ? '前回の基準点' : '今回の基準点' }[anchorState];
+  const near = nearestPlaced();
+  return `遮蔽: ${occ}　／　基準点: ${anc}　／　${near ? `最寄りの設置物: ${fmtLen(near.dist)} ${near.side}` : '設置物なし'}`;
 }
 
 /* ---------- 設置インスタンス(根入れ用の地面クリップ付き) ----------
@@ -2587,6 +2684,7 @@ function drawHUD(){
   const g = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   hud.userData.buttons = [];
+  hud.userData.solid = [[0, 0, W, 290]];   // 描いた部分だけレーザーで反応させる(透明部分で設置を邪魔しない)
   g.clearRect(0, 0, W, H);
   g.fillStyle = 'rgba(35,39,31,0.86)';
   roundRectPath(g, 0, 0, W, 290, 36); g.fill();
@@ -2611,6 +2709,7 @@ function drawHUD(){
   if(selectedObj){   // 選択中の物の操作(手でも操作できるように)
     g.fillStyle = 'rgba(35,39,31,0.86)';
     roundRectPath(g, 0, y, W, 100, 30); g.fill();
+    hud.userData.solid.push([0, y, W, 100]);
     const acts = [['↺15°', 'obj:rotl'], ['↻15°', 'obj:rotr'], [scaleLocked ? '▼5cm' : '縮小', 'obj:down'], [scaleLocked ? '▲5cm' : '拡大', 'obj:up'],
                   ['複製', 'obj:dup'], ['削除', 'obj:del'], ['✕', 'obj:desel']];
     const ow = (W - 16 * (acts.length + 1)) / acts.length;
@@ -2620,6 +2719,7 @@ function drawHUD(){
   const mode = currentModeLabel();
   if(mode){   // いまのモードと、押して抜けるボタン
     uiButton(hud, g, 16, y, W - 32, 64, `${mode}　✕`, 'hud:mode-exit', { warn: true, size: 28 });
+    hud.userData.solid.push([16, y, W - 32, 64]);
     y += 76;
   }
   uiToast(g, W, Math.min(y + 4, H - 62));
@@ -2662,15 +2762,19 @@ function drawPanel(){
     uiButton(P, g, W - 240, H - 170, 200, 84, '次 ▶', 'pal:page+');
   }else if(uiPanelName === 'menu'){
     panelFrame(g, W, H, 'メニュー');
+    const depthOn = !!(xrSession && xrSession.enabledFeatures && xrSession.enabledFeatures.includes('depth-sensing'));
     const items = [
       ['📐 距離を計測', 'menu:measure', { on: measureMode }],
       ['☀ 季節・日当たり・成長', 'menu:sun'],
       ['⛰ 地面の起伏・北合わせ', 'menu:ground'],
       [`📋 案の切替・比較（いま: ${plans ? currentPlan().name : '—'}）`, 'menu:plan'],
+      ['📍 基準点をここにし直す（配置を目の前へ）', 'menu:rebase'],
+      [depthOn ? (occlusionHidden ? '👁 実物による遮蔽: 一時停止中（押して再開）' : '👁 実物による遮蔽: 有効（押して一時停止）') : '👁 実物による遮蔽: オフ', 'menu:occlusion', { on: depthOn && !occlusionHidden }],
       ['？ 操作ヘルプ', 'menu:help'],
       [clearArmed() ? '🗑 もう一度押すと全削除' : '🗑 全削除', 'menu:clear', { warn: true }],
     ];
-    items.forEach(([label, act, opt], i) => uiButton(P, g, 40, 126 + i * 118, W - 80, 100, label, act, { size: 34, ...(opt || {}) }));
+    items.forEach(([label, act, opt], i) => uiButton(P, g, 40, 116 + i * 98, W - 80, 86, label, act, { size: 32, ...(opt || {}) }));
+    uiText(g, diagnosticsText(), W / 2, 116 + items.length * 98 + 34, { size: 24, color: 'rgba(234,231,220,0.7)', maxW: W - 60 });
   }else if(uiPanelName === 'sun'){
     panelFrame(g, W, H, '季節・日当たり・成長');
     const row = (y, label, minus, plus) => {
@@ -2777,6 +2881,8 @@ function handleUIAction(act){
     if(cmd === 'measure'){ toggleMeasure(); if(measureMode) closeUIPanel(); }
     if(cmd === 'sun' || cmd === 'ground' || cmd === 'plan' || cmd === 'help') openUIPanel(cmd);
     if(cmd === 'clear' && requestClearAll()) closeUIPanel();
+    if(cmd === 'rebase'){ rebaseAnchorHere(); closeUIPanel(); }
+    if(cmd === 'occlusion') toggleOcclusionPause();
   }
   if(grp === 'sun') sunAction(cmd);
   if(grp === 'ground') groundAction(cmd);
@@ -2806,8 +2912,9 @@ function uiHitFor(c){
   _uiRay.ray.direction.set(0, 0, -1).applyMatrix4(tmpMat);
   const hit = _uiRay.intersectObjects(boards, false)[0];
   if(!hit || !hit.uv) return null;
-  const { canvas, buttons } = hit.object.userData;
+  const { canvas, buttons, solid } = hit.object.userData;
   const x = hit.uv.x * canvas.width, y = (1 - hit.uv.y) * canvas.height;
+  if(solid && !solid.some(([sx, sy, sw, sh]) => x >= sx && x <= sx + sw && y >= sy && y <= sy + sh)) return null;
   const btn = buttons.find(b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) || null;
   return { board: hit.object, distance: hit.distance, act: btn ? btn.act : null };
 }
@@ -2864,6 +2971,7 @@ function onSelectStart(c){
   if(northMode){ northMode = false; updateModeChip(); c.userData.placeOnRelease = false; setNorthFrom(c); return; }
   if(groundMode){ c.userData.placeOnRelease = false; recordGroundPoint(c); return; }
   if(measureMode){ addMeasurePoint(c); return; }
+  if(anchorBusy()){ c.userData.placeOnRelease = false; toast('前回の基準点を探しています… 数秒待ってから設置してください'); return; }
   const obj = objectUnderRay(c);
   if(obj){
     pushUndo();
@@ -2901,7 +3009,8 @@ function onSelectEnd(c){
       inst.rotation.y = Math.atan2(cam.position.x - p.x, cam.position.z - p.z) - anchorYaw();
       updateCount();
       scheduleSave();
-      toast(`${m.name} を設置（${placedGroup.children.length}個目）`);
+      const cp = renderer.xr.getCamera().position;
+      toast(`${m.name} を設置（${placedGroup.children.length}個目・${fmtLen(Math.hypot(p.x - cp.x, p.z - cp.z))}先）`);
     }
   }
 }
@@ -3162,6 +3271,13 @@ function requestClearAll(){
   clearAllPlaced();
   return true;
 }
+function toggleOcclusionPause(){
+  const depthOn = !!(xrSession && xrSession.enabledFeatures && xrSession.enabledFeatures.includes('depth-sensing'));
+  if(!depthOn){ toast('遮蔽はオフです（MR開始前の画面でオンにできます）'); return; }
+  occlusionHidden = !occlusionHidden;
+  toast(occlusionHidden ? '実物による遮蔽を一時停止しました' : '実物による遮蔽を再開しました');
+  markUIDirty();
+}
 function toggleMeasure(){
   setMeasureMode(!measureMode);
   toast(measureMode ? '計測モード: 2点をトリガーで指定' : '計測モードを終了しました');
@@ -3171,6 +3287,8 @@ menuPanel.addEventListener('click', (e) => {
   if(!b) return;
   const act = b.dataset.m;
   if(act === 'measure'){ toggleMeasure(); closeXRPanels(); }
+  if(act === 'rebase'){ rebaseAnchorHere(); closeXRPanels(); }
+  if(act === 'occlusion') toggleOcclusionPause();
   if(act === 'sun') togglePanel(sunPanel);
   if(act === 'ground') togglePanel(groundPanel);
   if(act === 'plan') togglePanel(planPanel);
@@ -3677,7 +3795,8 @@ if(new URLSearchParams(location.search).has('debug')){
                        sun, sunState, sunDirWorld, setSunHour, setSunMonth, setNorthFrom, applySun,
                        setGrowYears, growthFactor, setGroundPts, terrainHeight, setTerrainShown, updateClipPlanes, floorPointFor,
                        switchPlan, newPlan, getPlans: () => plans, ghostGroup, renderPlanImage, refreshPalette, updateModeChip, setSelected, refreshObjBar,
-                       getSelected: () => selectedObj, drawHUD, hud,
+                       getSelected: () => selectedObj, drawHUD, hud, renderer, xrSessionRef: () => xrSession,
+                       anchorInfo: () => `${anchorState}${anchorRestored ? "(復元)" : ""}`, diag: () => diagnosticsText(),
                        uiPanel, openUIPanel, closeUIPanel, drawPanel, handleUIAction, uiHitFor,
                        setHudActive: (on) => { hudActive = on; hud.visible = on; hudSnap = true; markUIDirty(); } };
 }
@@ -3690,6 +3809,8 @@ renderer.setAnimationLoop((t, frame) => {
 
   if(renderer.xr.isPresenting){
     if(frame) updateAnchor(frame);
+    const depthMesh = renderer.xr.getDepthSensingMesh && renderer.xr.getDepthSensingMesh();
+    if(depthMesh) depthMesh.visible = !occlusionHidden;   // メニューの「遮蔽を一時停止」
     updateUIHits();
     hovered = null;
     const order = activeController ? [activeController, ...controllers.filter(c => c !== activeController)] : controllers;
