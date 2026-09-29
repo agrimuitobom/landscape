@@ -416,6 +416,7 @@
       <tr><td>X ボタン（左手）</td><td>タップ＝指している物（選択中の物）を複製／長押し＝全削除</td></tr>
       <tr><td>Y ボタン（左手）</td><td>タップ＝直前の操作を元に戻す／長押し＝MRを終了</td></tr>
       <tr><td>操作盤・パネル（Quest）</td><td>レーザーを当ててトリガー（手ならつまむ）。操作盤は視線の下に付いてきます</td></tr>
+      <tr><td>操作盤・パネルの移動</td><td>ボタン以外の余白をトリガーでつかんで動かす（つかんだままスティック上下で遠く／近く）。置いた操作盤はその場に固定</td></tr>
       <tr><td>上部の素材ボタン（MR中）</td><td>サムネイル一覧から置く素材を選ぶ（石・樹木などで絞り込み）</td></tr>
       <tr><td>選択中の物のバー（MR中・画面下）</td><td>最後に置いた／つかんだ物を ↺↻15°回転・▼▲5cm根入れ・複製・削除</td></tr>
       <tr><td>ハンドトラッキング</td><td>親指と人差し指でつまむ＝トリガー（設置・つかむ・ボタン操作）。回転や根入れは画面下のバーで</td></tr>
@@ -1514,8 +1515,7 @@ renderer.xr.addEventListener('sessionstart', () => {
   if(domOverlayActive) xrOverlay.classList.add('on');
   hudActive = !domOverlayActive;
   hud.visible = hudActive;
-  hudSnap = true;
-  hudDirty = true;
+  resetUIPlacement();
   refreshPreviewGround();
   if(previewObj){ scene.remove(previewObj); previewObj = null; }
   renderer.setClearColor(0x000000, 0);   // パススルー
@@ -1570,6 +1570,7 @@ renderer.xr.addEventListener('sessionend', () => {
   hudActive = false;
   uiPanel.visible = false;
   uiPanelName = null;
+  uiDrag = null;
   saveLayoutNow();
   refreshPreview();
 });
@@ -2683,29 +2684,37 @@ function drawHUD(){
   const { canvas } = hud.userData;
   const g = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
+  const G = 56;   // 上端のつまみ(ここや余白をトリガーでつかむと移動できる)
   hud.userData.buttons = [];
-  hud.userData.solid = [[0, 0, W, 290]];   // 描いた部分だけレーザーで反応させる(透明部分で設置を邪魔しない)
+  hud.userData.solid = [[0, 0, W, 290 + G]];   // 描いた部分だけレーザーで反応させる(透明部分で設置を邪魔しない)
   g.clearRect(0, 0, W, H);
   g.fillStyle = 'rgba(35,39,31,0.86)';
-  roundRectPath(g, 0, 0, W, 290, 36); g.fill();
+  roundRectPath(g, 0, 0, W, 290 + G, 36); g.fill();
+  drawGrip(g, W, uiDrag && uiDrag.board === hud);
+  if(hudPinned){
+    uiText(g, '📌 ここに固定中', 24, 38, { size: 24, align: 'left', color: 'rgba(234,231,220,0.7)' });
+    uiButton(hud, g, W - 296, 6, 280, 46, '付いてくるに戻す', 'hud:follow', { size: 24 });
+  }else{
+    uiText(g, '✥ 余白をつかむと移動', W / 2, 48, { size: 22, color: 'rgba(234,231,220,0.45)' });
+  }
 
   const m = models[activeIndex];
   const w = modelWeight(m);
-  uiButton(hud, g, 16, 14, 90, 76, '◀', 'hud:prev', { size: 36 });
-  uiButton(hud, g, W - 106, 14, 90, 76, '▶', 'hud:next', { size: 36 });
-  uiText(g, m ? m.name : '—', W / 2, 66, { size: 46, color: '#EAE7DC', bold: true, maxW: W - 260 });
+  uiButton(hud, g, 16, G + 14, 90, 76, '◀', 'hud:prev', { size: 36 });
+  uiButton(hud, g, W - 106, G + 14, 90, 76, '▶', 'hud:next', { size: 36 });
+  uiText(g, m ? m.name : '—', W / 2, G + 66, { size: 46, color: '#EAE7DC', bold: true, maxW: W - 260 });
   const { n, t, stones } = placedTotals();
   uiText(g, `${m ? fmtDims(m.size) : '—'}${w != null ? '・' + fmtWeight(w) : ''}　／　設置${n}個${stones ? `・石${fmtWeight(t)}` : ''}${plans ? '・' + currentPlan().name : ''}`,
-         W / 2, 126, { size: 28, maxW: W - 60 });
-  uiText(g, lastTargetText || '物に向けると寸法・根入れ・重量を表示', W / 2, 168,
+         W / 2, G + 126, { size: 28, maxW: W - 60 });
+  uiText(g, lastTargetText || '物に向けると寸法・根入れ・重量を表示', W / 2, G + 168,
          { size: 28, bold: true, color: lastTargetText ? '#C9D8B8' : 'rgba(234,231,220,0.45)', maxW: W - 60 });
   const bw = (W - 16 * 5) / 4;
-  uiButton(hud, g, 16,                 190, bw, 84, '素材を選ぶ', 'hud:palette', { on: uiPanelName === 'palette' });
-  uiButton(hud, g, 16 + (bw + 16),     190, bw, 84, '☰ メニュー', 'hud:menu', { on: !!uiPanelName && uiPanelName !== 'palette' });
-  uiButton(hud, g, 16 + (bw + 16) * 2, 190, bw, 84, scaleLocked ? '上下＝根入れ' : '上下＝大きさ', 'hud:stick');
-  uiButton(hud, g, 16 + (bw + 16) * 3, 190, bw, 84, '↶ 戻す', 'hud:undo');
+  uiButton(hud, g, 16,                 G + 190, bw, 84, '素材を選ぶ', 'hud:palette', { on: uiPanelName === 'palette' });
+  uiButton(hud, g, 16 + (bw + 16),     G + 190, bw, 84, '☰ メニュー', 'hud:menu', { on: !!uiPanelName && uiPanelName !== 'palette' });
+  uiButton(hud, g, 16 + (bw + 16) * 2, G + 190, bw, 84, scaleLocked ? '上下＝根入れ' : '上下＝大きさ', 'hud:stick');
+  uiButton(hud, g, 16 + (bw + 16) * 3, G + 190, bw, 84, '↶ 戻す', 'hud:undo');
 
-  let y = 304;
+  let y = G + 304;
   if(selectedObj){   // 選択中の物の操作(手でも操作できるように)
     g.fillStyle = 'rgba(35,39,31,0.86)';
     roundRectPath(g, 0, y, W, 100, 30); g.fill();
@@ -2732,8 +2741,15 @@ function panelFrame(g, W, H, title){
   g.clearRect(0, 0, W, H);
   g.fillStyle = 'rgba(35,39,31,0.9)';
   roundRectPath(g, 0, 0, W, H, 40); g.fill();
-  uiText(g, title, 40, 76, { size: 44, color: '#EAE7DC', bold: true, align: 'left' });
+  drawGrip(g, W, uiDrag && uiDrag.board === uiPanel);
+  uiText(g, title, 40, 80, { size: 44, color: '#EAE7DC', bold: true, align: 'left', maxW: W - 480 });
+  uiText(g, '✥ 余白をつかむと移動', W - 146, 72, { size: 22, align: 'right', color: 'rgba(234,231,220,0.5)' });
   uiButton(uiPanel, g, W - 124, 24, 100, 70, '✕', 'nav:close', { size: 34 });
+}
+/* 板の上端中央のつまみ(移動できることを示す)。つかんでいる間は明るくする */
+function drawGrip(g, W, active){
+  g.fillStyle = active ? '#C9D8B8' : 'rgba(234,231,220,0.35)';
+  roundRectPath(g, W / 2 - 70, 14, 140, 10, 5); g.fill();
 }
 function drawPanel(){
   const { canvas } = uiPanel.userData;
@@ -2770,11 +2786,12 @@ function drawPanel(){
       [`📋 案の切替・比較（いま: ${plans ? currentPlan().name : '—'}）`, 'menu:plan'],
       ['📍 基準点をここにし直す（配置を目の前へ）', 'menu:rebase'],
       [depthOn ? (occlusionHidden ? '👁 実物による遮蔽: 一時停止中（押して再開）' : '👁 実物による遮蔽: 有効（押して一時停止）') : '👁 実物による遮蔽: オフ', 'menu:occlusion', { on: depthOn && !occlusionHidden }],
+      ['🪟 操作盤とメニューを目の前に戻す', 'menu:uihome'],
       ['？ 操作ヘルプ', 'menu:help'],
       [clearArmed() ? '🗑 もう一度押すと全削除' : '🗑 全削除', 'menu:clear', { warn: true }],
     ];
-    items.forEach(([label, act, opt], i) => uiButton(P, g, 40, 116 + i * 98, W - 80, 86, label, act, { size: 32, ...(opt || {}) }));
-    uiText(g, diagnosticsText(), W / 2, 116 + items.length * 98 + 34, { size: 24, color: 'rgba(234,231,220,0.7)', maxW: W - 60 });
+    items.forEach(([label, act, opt], i) => uiButton(P, g, 40, 112 + i * 88, W - 80, 78, label, act, { size: 30, ...(opt || {}) }));
+    uiText(g, diagnosticsText(), W / 2, 112 + items.length * 88 + 30, { size: 24, color: 'rgba(234,231,220,0.7)', maxW: W - 60 });
   }else if(uiPanelName === 'sun'){
     panelFrame(g, W, H, '季節・日当たり・成長');
     const row = (y, label, minus, plus) => {
@@ -2833,7 +2850,9 @@ function drawPanel(){
       '左 Y … 元に戻す（長押しでMR終了）',
       '手で操作 … 親指と人差し指でつまむ＝トリガー',
       '　回転・根入れ・複製・削除は操作盤の下段で',
-    ].forEach((line, i) => uiText(g, line, 60, 170 + i * 58, { size: 30, align: 'left', maxW: W - 120 }));
+      '操作盤・メニューの移動 … 余白をトリガーでつかんで動かす',
+      '　つかんだままスティック上下で遠く／近く',
+    ].forEach((line, i) => uiText(g, line, 60, 160 + i * 56, { size: 30, align: 'left', maxW: W - 120 }));
     back();
   }
   uiToast(g, W, H - 62);
@@ -2843,12 +2862,16 @@ function drawPanel(){
 function openUIPanel(name){
   if(!hudActive) return;
   uiPanelName = name;
-  // 目の前(視線の水平方向・少し下)に固定して開く
+  // 目の前(視線の水平方向・少し下)に固定して開く。つかんで動かした後は、近くにいる限りその場所に開く
   const cam = renderer.xr.getCamera();
   _uiHead.setFromMatrixPosition(cam.matrixWorld);
-  _uiFwd.set(0, 0, -1).transformDirection(cam.matrixWorld).setY(0).normalize();
-  uiPanel.position.copy(_uiHead).addScaledVector(_uiFwd, 0.85);
-  uiPanel.position.y = _uiHead.y - 0.12;
+  if(panelPose && Math.hypot(panelPose.x - _uiHead.x, panelPose.z - _uiHead.z) < UI_KEEP_DIST){
+    uiPanel.position.copy(panelPose);
+  }else{
+    _uiFwd.set(0, 0, -1).transformDirection(cam.matrixWorld).setY(0).normalize();
+    uiPanel.position.copy(_uiHead).addScaledVector(_uiFwd, 0.85);
+    uiPanel.position.y = _uiHead.y - 0.12;
+  }
   uiPanel.lookAt(_uiHead);
   uiPanel.visible = true;
   hud.visible = false;
@@ -2875,6 +2898,7 @@ function handleUIAction(act){
     if(cmd === 'stick') toggleStickMode();
     if(cmd === 'undo') undo();
     if(cmd === 'mode-exit'){ northMode = false; groundMode = false; setMeasureMode(false); toast('モードを終了しました'); }
+    if(cmd === 'follow'){ hudPinned = false; hudSnap = true; toast('操作盤が視線に付いてくるようにしました'); }
   }
   if(grp === 'obj') objAction(cmd);
   if(grp === 'menu'){
@@ -2883,6 +2907,7 @@ function handleUIAction(act){
     if(cmd === 'clear' && requestClearAll()) closeUIPanel();
     if(cmd === 'rebase'){ rebaseAnchorHere(); closeUIPanel(); }
     if(cmd === 'occlusion') toggleOcclusionPause();
+    if(cmd === 'uihome'){ resetUIPlacement(); closeUIPanel(); toast('操作盤とメニューを目の前に戻しました'); }
   }
   if(grp === 'sun') sunAction(cmd);
   if(grp === 'ground') groundAction(cmd);
@@ -2927,7 +2952,8 @@ function pulse(c, strength = 0.35, ms = 25){
 function updateUIHits(){
   const hovers = new Map([[hud, null], [uiPanel, null]]);
   for(const c of controllers){
-    const hit = c.userData.inputSource ? uiHitFor(c) : null;
+    const hit = uiDrag && uiDrag.c === c ? { board: uiDrag.board, distance: uiDrag.dist, act: null }   // 動かしている間は板を指したまま
+              : c.userData.inputSource ? uiHitFor(c) : null;
     c.userData.uiHit = hit;
     const line = c.children[0];
     if(line) line.scale.z = hit ? Math.max(0.02, hit.distance / 4) : 1;
@@ -2938,14 +2964,76 @@ function updateUIHits(){
   }
 }
 
+/* ---------- 操作盤・パネルの移動 ----------
+   ボタン以外の部分(余白・つまみ)をトリガーでつかむと、レーザーの先に付いて動く。
+   つかんだままスティック上下で遠く/近く。操作盤は置いた場所に固定され、パネルは次に開くときもそこに出る */
+const UI_KEEP_DIST = 2.5;   // これより離れたら固定をやめて手元に戻す(操作盤を見失わないように)
+let uiDrag = null;          // { c, board, dist, offset }
+let hudPinned = false;
+let panelPose = null;       // 今回のMRでパネルを置いた位置
+const _dragO = new THREE.Vector3(), _dragD = new THREE.Vector3();
+function controllerRay(c){
+  tmpMat.identity().extractRotation(c.matrixWorld);
+  _dragO.setFromMatrixPosition(c.matrixWorld);
+  _dragD.set(0, 0, -1).applyMatrix4(tmpMat);
+}
+function startUIDrag(c, hit){
+  controllerRay(c);
+  const p = _dragO.clone().addScaledVector(_dragD, hit.distance);
+  uiDrag = { c, board: hit.board, dist: hit.distance, offset: hit.board.position.clone().sub(p), from: hit.board.position.clone() };
+  pulse(c, 0.2, 15);
+  markUIDirty();
+}
+function updateUIDrag(dt){
+  if(!uiDrag) return;
+  const { c, board } = uiDrag;
+  if(!board.visible || !c.userData.inputSource){ uiDrag = null; markUIDirty(); return; }
+  const gp = c.userData.inputSource.gamepad;
+  if(gp && gp.axes && gp.axes.length >= 4 && Math.abs(gp.axes[3]) > 0.18){   // 上に倒す=遠く / 下=近く
+    uiDrag.dist = THREE.MathUtils.clamp(uiDrag.dist - gp.axes[3] * 0.8 * dt, 0.3, 2.5);
+  }
+  controllerRay(c);
+  board.position.copy(_dragO).addScaledVector(_dragD, uiDrag.dist).add(uiDrag.offset);
+  _uiHead.setFromMatrixPosition(renderer.xr.getCamera().matrixWorld);
+  board.lookAt(_uiHead);
+}
+function endUIDrag(){
+  if(!uiDrag) return;
+  const { board, from } = uiDrag;
+  uiDrag = null;
+  if(board.position.distanceTo(from) < 0.03){ markUIDirty(); return; }   // 余白を押しただけ(動かしていない)
+  if(board === hud){
+    hudPinned = true;
+    hud.userData.anchor = hud.position.clone();
+    toast('操作盤をここに固定しました');
+  }else{
+    panelPose = board.position.clone();
+  }
+  markUIDirty();
+}
+function resetUIPlacement(){
+  uiDrag = null;
+  hudPinned = false;
+  panelPose = null;
+  hudSnap = true;
+  markUIDirty();
+}
+
 /* 毎フレーム: HUDは視線の下に「ゆっくり付いてくる」。見回す程度では動かないので押しやすい */
-function updateHUD(){
+function updateHUD(dt = 0){
   if(!hudActive) return;
+  updateUIDrag(dt);
   if(hudToastMsg && performance.now() > hudToastUntil){ hudToastMsg = ''; markUIDirty(); }
   if(hudDirty && hud.visible){ drawHUD(); hudDirty = false; }
   if(panelDirty && uiPanel.visible){ drawPanel(); panelDirty = false; }
+  if(uiDrag && uiDrag.board === hud) return;
   const cam = renderer.xr.getCamera();
   _uiHead.setFromMatrixPosition(cam.matrixWorld);
+  if(hudPinned){   // 置いた場所に固定(向きだけこちらに向ける)。離れすぎたら手元に戻す
+    if(Math.hypot(hud.position.x - _uiHead.x, hud.position.z - _uiHead.z) <= UI_KEEP_DIST){ hud.lookAt(_uiHead); return; }
+    hudPinned = false; hudSnap = true; markUIDirty();
+    toast('操作盤が遠くなったので手元に戻しました');
+  }
   _uiFwd.set(0, 0, -1).transformDirection(cam.matrixWorld).setY(0);
   if(_uiFwd.lengthSq() < 1e-4) return;
   _uiFwd.normalize();
@@ -2965,6 +3053,7 @@ function onSelectStart(c){
     c.userData.uiPress = true;
     c.userData.placeOnRelease = false;
     if(c.userData.uiHit.act){ pulse(c); handleUIAction(c.userData.uiHit.act); }
+    else if(!uiDrag) startUIDrag(c, c.userData.uiHit);   // 余白をつかんだ = 板を動かす
     return;
   }
   activeController = c;
@@ -2985,7 +3074,11 @@ function onSelectStart(c){
 
 function onSelectEnd(c){
   if(!renderer.xr.isPresenting) return;
-  if(c.userData.uiPress){ c.userData.uiPress = false; return; }
+  if(c.userData.uiPress){
+    c.userData.uiPress = false;
+    if(uiDrag && uiDrag.c === c) endUIDrag();
+    return;
+  }
   if(groundMode) return;
   if(measureMode){ c.userData.placeOnRelease = false; return; }
   if(grabbed && activeController === c){
@@ -3058,7 +3151,7 @@ function adjustSink(target, y, dt){
 
 function pollThumbsticks(dt){
   const target = grabbed || hovered;
-  if(!target || !xrSession) return;
+  if(!target || !xrSession || uiDrag) return;   // 板を動かしている間のスティックは距離の調整に使う
   let changed = false;
   const beforeChange = () => {   // 連続入力の先頭でだけアンドゥ点を積む
     const now = performance.now();
@@ -3798,7 +3891,8 @@ if(new URLSearchParams(location.search).has('debug')){
                        getSelected: () => selectedObj, drawHUD, hud, renderer, xrSessionRef: () => xrSession,
                        anchorInfo: () => `${anchorState}${anchorRestored ? "(復元)" : ""}`, diag: () => diagnosticsText(),
                        uiPanel, openUIPanel, closeUIPanel, drawPanel, handleUIAction, uiHitFor,
-                       setHudActive: (on) => { hudActive = on; hud.visible = on; hudSnap = true; markUIDirty(); } };
+                       setHudActive: (on) => { hudActive = on; hud.visible = on; hudSnap = true; markUIDirty(); },
+                       uiDragInfo: () => ({ dragging: !!uiDrag, hudPinned, panelPose: panelPose && panelPose.toArray() }) };
 }
 
 /* ================= メインループ ================= */
@@ -3854,7 +3948,7 @@ renderer.setAnimationLoop((t, frame) => {
 
     pollThumbsticks(dt);
     pollButtons();
-    updateHUD();
+    updateHUD(dt);
     updateTargetInfo();
 
     /* 影の範囲をユーザーに追従させる(広い庭でも近くの影が切れないように) */
