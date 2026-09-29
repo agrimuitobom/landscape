@@ -50,6 +50,24 @@ npx gltf-transform optimize tree-geo.glb ../presets/tree.glb --simplify false \
 - `--keep` は残す葉の割合です（0.8 で元の見た目に近く、約6万ポリゴン）。まばらなら上げ、重ければ下げます。
 - 葉は材質に `foliage` の印が付き、アプリ側で裏から見ても暗くならないように表示されます。
 
+### 「セット」素材から1つだけ取り出す
+
+Poly Haven のシダ・若木・小石などは、数個が横に並んだ「セット」になっていることがあります。
+そのままだと全部まとめて1個として置かれるので、`pick-part.mjs` で1つだけ取り出してから圧縮します。
+
+```bash
+cd tools && npm install
+node pick-part.mjs fern_02_1k.gltf fern.glb xxx   # 名前が違うと、選べるノード名の一覧が表示されます
+node pick-part.mjs fern_02_1k.gltf fern.glb fern_02_b
+# 針葉樹など葉の板が多いもの: --thin で葉の板を間引く(残した板は少し大きくして密度を保つ)
+node pick-part.mjs pine_sapling_small_1k.gltf pine.glb pine_sapling_small_a --thin 0.3
+npx gltf-transform optimize pine.glb ../presets/pine.glb --simplify false \
+  --compress meshopt --texture-compress webp --texture-size 1024
+```
+
+- 葉（透過する材質）には自動で `foliage` の印が付きます。
+- ベンチ・プランターなど細部を近くで見ない物は `--texture-size 512` にすると軽くなります。
+
 ## 3. manifest.json に登録する
 
 ```json
@@ -84,6 +102,9 @@ npx gltf-transform optimize tree-geo.glb ../presets/tree.glb --simplify false \
 | `scale` | − | 単位がずれている素材の補正（cm 単位で作られた素材なら `0.01`） |
 | `kind` | − | 種類。石は `granite`（御影石 2.65）・`andesite`（一般の庭石 2.6）・`sandstone`（砂岩 2.3）で推定重量を表示。樹木は `decid`（落葉樹 年40cm）・`ever`（常緑樹 年30cm）・`shrub`（低木 年8cm）で「年数」切替時に成長の目安を表示 |
 | `density` | − | 比重（t/m³）を直接指定する場合（`kind` より優先。樹木には書かない） |
+| `category` | − | 素材パレットの分類を指定（`石`・`樹木`・`構造物`・`水・地面`）。省略時は `kind` から自動（石→石、樹木→樹木、それ以外→構造物）。切り株・丸太を「樹木」に入れる場合など |
+
+- `name` は MR の素材パレットで**全角8文字程度**まで表示されます（高さは名前の下に自動で出るので、名前に寸法を入れなくて大丈夫です）。
 
 置いたら GitHub に push し、GitHub Pages の更新後に Quest でページを再読み込みしてください。
 ライブラリに表示される寸法（幅×奥行×高さ）が実物と合っているか必ず確認してください。

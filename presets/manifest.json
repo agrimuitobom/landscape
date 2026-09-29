@@ -2,19 +2,105 @@
   "models": [
     {
       "id": "ph-boulder-01",
-      "name": "岩（ボルダー・大）",
+      "name": "岩（大）",
       "file": "boulder_01.glb",
       "credit": "Rico Cilliers / Poly Haven",
       "license": "CC0",
       "kind": "andesite"
     },
     {
+      "id": "ph-boulder-03",
+      "name": "岩（特大）",
+      "file": "boulder_03.glb",
+      "credit": "Jenelle van Heerden, Dario Barresi / Poly Haven",
+      "license": "CC0",
+      "kind": "andesite"
+    },
+    {
+      "id": "ph-boulder-05",
+      "name": "岩（平たい）",
+      "file": "boulder_05.glb",
+      "credit": "Jenelle van Heerden, Dario Barresi / Poly Haven",
+      "license": "CC0",
+      "kind": "andesite"
+    },
+    {
+      "id": "ph-boulder-06",
+      "name": "岩（角ばった）",
+      "file": "boulder_06.glb",
+      "credit": "Greg Zaal, Jenelle van Heerden / Poly Haven",
+      "license": "CC0",
+      "kind": "andesite"
+    },
+    {
+      "id": "ph-rock-pile-02",
+      "name": "石組み（大）",
+      "file": "rock_pile_02.glb",
+      "credit": "Greg Zaal, Rico Cilliers / Poly Haven",
+      "license": "CC0",
+      "kind": "andesite"
+    },
+    {
+      "id": "ph-stones-small-01",
+      "name": "根締めの小石",
+      "file": "stones_small_01.glb",
+      "credit": "Greg Zaal, Jenelle van Heerden / Poly Haven",
+      "license": "CC0",
+      "kind": "andesite"
+    },
+    {
       "id": "ph-tree-small-02",
-      "name": "落葉樹（小・高さ4.5m）",
+      "name": "落葉樹（高木）",
       "file": "tree_small_02.glb",
       "credit": "Rico Cilliers / Poly Haven",
       "license": "CC0",
       "kind": "decid"
+    },
+    {
+      "id": "ph-pine-sapling-01",
+      "name": "松の若木",
+      "file": "pine_sapling_01.glb",
+      "credit": "Rob Tuytel, Rico Cilliers / Poly Haven",
+      "license": "CC0",
+      "kind": "ever"
+    },
+    {
+      "id": "ph-fern-02",
+      "name": "シダ",
+      "file": "fern_02.glb",
+      "credit": "Rob Tuytel, Rico Cilliers / Poly Haven",
+      "license": "CC0",
+      "kind": "shrub"
+    },
+    {
+      "id": "ph-tree-stump-01",
+      "name": "切り株",
+      "file": "tree_stump_01.glb",
+      "credit": "Rob Tuytel / Poly Haven",
+      "license": "CC0",
+      "category": "樹木"
+    },
+    {
+      "id": "ph-log-01",
+      "name": "丸太（倒木）",
+      "file": "log_01.glb",
+      "credit": "Rob Tuytel / Poly Haven",
+      "license": "CC0",
+      "category": "樹木"
+    },
+    {
+      "id": "ph-bench-wood-01",
+      "name": "木のベンチ",
+      "file": "bench_wood_01.glb",
+      "credit": "Kirill Sannikov / Poly Haven",
+      "license": "CC0"
+    },
+    {
+      "id": "ph-planter-box-01",
+      "name": "木のプランター",
+      "file": "planter_box_01.glb",
+      "credit": "James Ray Cock / Poly Haven",
+      "license": "CC0"
     }
   ]
 }
