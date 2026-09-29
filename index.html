@@ -1221,7 +1221,7 @@ function applyFoliage(mat){
 }
 
 /* 底面中心を原点に正規化してテンプレート化 */
-function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='', kind='none', density=null } = {}){
+function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='', kind='none', density=null, category=null } = {}){
   const box = new THREE.Box3().setFromObject(rawRoot);
   if(box.isEmpty()){ alert(`「${name}」にメッシュが見つかりませんでした`); return null; }
   const size = box.getSize(new THREE.Vector3());
@@ -1241,7 +1241,7 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, 
   let volume = computeVolume(template);
   const boxVol = size.x * size.y * size.z;
   if(!(volume >= 0.0005 && volume > boxVol * 0.02 && volume < boxVol * 1.05)) volume = 0;
-  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset, real, credit, volume };
+  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset, real, credit, volume, category };
   setKind(entry, kind);
   if(density != null && !entry.plant) entry.density = density;   // manifest で比重を直接指定した場合
   models.push(entry);
@@ -1337,7 +1337,7 @@ async function loadManifestPresets(){
     if(item.scale) root.scale.setScalar(Number(item.scale) || 1);
     const credit = [item.credit, item.license].filter(Boolean).join(' · ');
     addModel(item.name || item.file, root, { preset:true, real:true, id:'m:' + (item.id || item.file), credit,
-      kind: item.kind || 'none', density: item.density != null ? Number(item.density) || 0 : null });
+      kind: item.kind || 'none', density: item.density != null ? Number(item.density) || 0 : null, category: item.category || null });
   }
   realLabelEl.textContent = failed.length ? `リアル素材（${failed.length}件 読み込み失敗: ${failed.join('、')}）` : 'リアル素材';
 }
@@ -3455,6 +3455,7 @@ function generateThumbs(){
 const PAL_TABS = ['すべて', '石', '樹木', '構造物', '水・地面', '読み込み'];
 let palTab = 'すべて';
 function categoryOf(m){
+  if(m.category && PAL_TABS.includes(m.category)) return m.category;   // manifest の category 指定(切り株・丸太を「樹木」に等)
   if(m.plant) return '樹木';
   if(m.density) return '石';
   if(/池|小川|砂利|芝/.test(m.name)) return '水・地面';
