@@ -133,6 +133,22 @@
   }
   button.ghost:hover{ background:rgba(95,112,82,.1); }
 
+  .share-note{
+    margin-top:12px; padding:10px 12px; font-size:12.5px; line-height:1.6;
+    background:rgba(95,112,82,.12); border-left:3px solid var(--moss); border-radius:4px;
+  }
+  #share-dlg{
+    margin:auto; width:min(420px, calc(100vw - 32px)); padding:20px;
+    border:1px solid var(--line); border-radius:8px; background:var(--washi); color:var(--ink);
+    font-family:inherit;
+  }
+  #share-dlg::backdrop{ background:rgba(35,39,31,.45); }
+  #share-dlg h3{ font-family:"Shippori Mincho", serif; font-size:18px; margin-bottom:8px; }
+  #share-dlg .dlg-note{ font-size:12.5px; line-height:1.6; color:var(--ink-soft); }
+  #share-dlg .dlg-note.small{ font-size:11.5px; margin-top:10px; }
+  #share-qr{ display:block; width:220px; height:220px; margin:14px auto; image-rendering:pixelated; background:#fff; }
+  #share-url{ width:100%; padding:8px; font-size:11px; font-family:monospace; border:1px solid var(--line); border-radius:4px; background:#fff; }
+
   #start-btn{
     width:100%; margin-top:18px;
     padding:17px; font-size:16px; font-weight:700; letter-spacing:.22em;
@@ -367,6 +383,11 @@
       <button class="ghost" id="plan-image-btn">配置図を保存（PNG）</button>
       <button class="ghost" id="view-image-btn">3D画像を保存（PNG）</button>
     </div>
+    <p class="share-note" id="share-note" hidden></p>
+    <div class="btn-row">
+      <button class="ghost" id="ios-ar-btn">📱 iPhoneのARで見る</button>
+      <button class="ghost" id="share-btn">🔗 共有リンク・QR</button>
+    </div>
 
     <label class="opt-row"><input type="checkbox" id="opt-occlusion">
       <span>実物による遮蔽（試験機能・初期はオフ）<small>現実の木や人の後ろに置いた物が隠れます（Depth API）。オンにして置いた物が見えなくなる場合はオフにしてください</small></span></label>
@@ -537,6 +558,20 @@
   }
 })();
 </script>
+
+<dialog id="share-dlg">
+  <h3>共有リンク</h3>
+  <p class="dlg-note">このQRコードをiPhoneのカメラで読み取ると、iPhoneでこの配置が開きます。開いたら「📱 iPhoneのARで見る」を押してください。リンクはメールやClassroomで送ることもできます。</p>
+  <img id="share-qr" alt="共有リンクのQRコード">
+  <input id="share-url" readonly aria-label="共有リンク">
+  <div class="btn-row">
+    <button class="ghost" id="share-copy">リンクをコピー</button>
+    <button class="ghost" id="share-send" hidden>送る…</button>
+    <button class="ghost" id="usdz-dl">USDZを保存</button>
+  </div>
+  <p class="dlg-note small">リンクに入るのは配置だけです（素材のデータは入りません）。この端末で「読み込んだGLB」の素材は、相手の端末では表示されません。</p>
+  <div class="btn-row"><button class="ghost" id="share-close">閉じる</button></div>
+</dialog>
 
 <script type="importmap">
 {
@@ -1660,7 +1695,7 @@ if(navigator.xr){
       setSupport('✔ このブラウザはMR（immersive-ar）に対応しています。', 'ok');
       startBtn.disabled = false;
     }else{
-      setSupport('✕ immersive-ar 非対応です。Meta Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）', 'ng');
+      setSupport(noXRMessage('✕ immersive-ar 非対応です。Meta Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）'), 'ng');
     }
   }).catch(() => {
     if(settled) return;
@@ -1671,7 +1706,14 @@ if(navigator.xr){
     setSupport('△ WebXRの確認に失敗しました。「MRで開始」で直接試せます。Quest本体のブラウザ＋HTTPSで開いているか確認してください。', 'ng');
   });
 }else{
-  setSupport('✕ WebXR非対応ブラウザです。Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）', 'ng');
+  setSupport(noXRMessage('✕ WebXR非対応ブラウザです。Quest本体のブラウザで開いてください。（このPCではプレビューのみ可能）'), 'ng');
+}
+/* iPhone/iPad は WebXR が無いが、AR Quick Look で配置を見られる */
+function noXRMessage(text){
+  const a = document.createElement('a');
+  return (a.relList && a.relList.supports && a.relList.supports('ar'))
+    ? '📱 iPhone・iPadでは、MRでの配置・編集はできません。「レイアウト」の「📱 iPhoneのARで見る」で、配置を実物大のARで確認できます（共有リンクで開いた配置も見られます）。'
+    : text;
 }
 
 const launcher = document.getElementById('launcher');
@@ -2794,6 +2836,282 @@ document.getElementById('view-image-btn').addEventListener('click', () => {
   renderer.render(scene, camera);
   if(previewObj) previewObj.visible = hadPreview;
   downloadCanvas(renderer.domElement, `sekitei-3d-${plans ? plans.active : 'A'}-${dateStamp()}.png`);
+});
+
+/* ---------- 共有リンク・iPhoneのARで見る ----------
+   iPhone/iPad の Safari は WebXR に非対応のため、配置を USDZ に書き出して標準の AR Quick Look で開く(見るだけ)。
+   配置は端末ごとに保存されるので、Quest などで作った案は「共有リンク」(URLに配置を埋め込む)で iPhone に渡す */
+const arQuickLook = (() => { const a = document.createElement('a'); return !!(a.relList && a.relList.supports && a.relList.supports('ar')); })();
+const b64url = {
+  enc(bytes){ let s = ''; for(const b of bytes) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
+  dec(str){ const s = atob(str.replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(s, c => c.charCodeAt(0)); },
+};
+async function deflateBytes(bytes, inflate = false){
+  const cs = inflate ? new DecompressionStream('deflate-raw') : new CompressionStream('deflate-raw');
+  return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(cs)).arrayBuffer());
+}
+async function makeShareURL(){
+  saveLayoutNow();
+  const plan = plans ? currentPlan() : { name: '配置', items: serializeLayout().items };
+  const r = (v) => Math.round((Number(v) || 0) * 1000) / 1000;   // 1mm 単位
+  const data = { v: 1, n: plan.name, i: plan.items.map(it =>
+    [it.id, r(it.pos[0]), r(it.pos[1]), r(it.pos[2]), r(it.rotY), r(it.scale || 1), r(it.sink), ...(it.land ? [r(it.land)] : [])]) };
+  const z = await deflateBytes(new TextEncoder().encode(JSON.stringify(data)));
+  return `${location.origin}${location.pathname}#share=${b64url.enc(z)}`;
+}
+/* 共有リンクで開いたとき: 今の案が空ならそこへ、そうでなければ新しい案として取り込む */
+const shareNoteEl = document.getElementById('share-note');
+async function importSharedFromHash(){
+  const mm = location.hash.match(/^#share=([\w-]+)/);
+  if(!mm) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  let data;
+  try{ data = JSON.parse(new TextDecoder().decode(await deflateBytes(b64url.dec(mm[1]), true))); }
+  catch(err){ alert('共有リンクを読み取れませんでした（リンクが途中で切れていないか確認してください）'); return; }
+  const items = (data.i || []).map(a => ({ id: a[0], pos: [a[1], a[2], a[3]], rotY: a[4], scale: a[5], sink: a[6], ...(a[7] != null ? { land: a[7] } : {}) }));
+  const cur = currentPlan();
+  if(cur.items.length){
+    if(plans.list.length < PLAN_IDS.length) newPlan({ copy: false });
+    else if(!confirm(`案がいっぱいです。いまの「${cur.name}」を共有された配置で置き換えますか？`)) return;
+    else pushUndo();
+  }
+  currentPlan().name = `共有: ${data.n || '配置'}`.slice(0, 20);
+  const missing = applyLayout({ items });
+  layoutReady = true;
+  saveLayoutNow();
+  refreshPlansUI(); refreshPreview();
+  shareNoteEl.hidden = false;
+  shareNoteEl.textContent = `共有された配置（${items.length - missing}個）を「${currentPlan().name}」として開きました。`
+    + (arQuickLook ? '「📱 iPhoneのARで見る」を押すと、実物大で床に置いて見られます。' : '')
+    + (missing ? `（${missing}個は、この端末に無い素材のため表示されません）` : '');
+  if(arQuickLook) shareNoteEl.scrollIntoView({ block: 'center', behavior: 'smooth' });   // iPhone: すぐ下のボタンが見えるように
+}
+addEventListener('hashchange', importSharedFromHash);
+
+/* AR用の場面をつくる。USDZ は根入れの切り取りや窪みの穴の描き方に対応しないため、
+   - 地面より下に埋めた部分は地表の高さに押しつぶす(石の根入れ)
+   - 窪みは平らな水面/地面として描き、中に置いた物は地表へ上げる */
+function arMaterial(mat, geo){
+  const m = mat.clone();
+  m.clippingPlanes = null;
+  // 凹凸・つや等の補助画像は外して色の画像だけにする(ファイルを小さくし、スマホでの書き出しを速く)
+  m.normalMap = m.roughnessMap = m.metalnessMap = m.aoMap = m.emissiveMap = null;
+  m.side = THREE.FrontSide;   // 両面が必要な物は形の側で裏面を足す
+  if(m.vertexColors && geo.attributes.color){   // 頂点色(手作りの岩など)は Quick Look で使われないので平均色にする
+    const c = geo.attributes.color, avg = new THREE.Color(0, 0, 0);
+    for(let i=0; i<c.count; i++){ avg.r += c.getX(i); avg.g += c.getY(i); avg.b += c.getZ(i); }
+    m.color.multiply(avg.multiplyScalar(1 / Math.max(1, c.count)));
+    m.vertexColors = false;
+  }
+  return m;
+}
+/* 圧縮(量子化)された頂点を通常の小数に直した複製。量子化のままだと動かしたときに範囲外で潰れる */
+function floatGeometry(geo){
+  const out = new THREE.BufferGeometry();
+  for(const [name, attr] of Object.entries(geo.attributes)){
+    const arr = new Float32Array(attr.count * attr.itemSize);
+    for(let i=0; i<attr.count; i++) for(let j=0; j<attr.itemSize; j++) arr[i * attr.itemSize + j] = attr.getComponent(i, j);
+    out.setAttribute(name, new THREE.BufferAttribute(arr, attr.itemSize));
+  }
+  if(geo.index) out.setIndex(new THREE.BufferAttribute(Uint32Array.from(geo.index.array), 1));
+  return out;
+}
+/* 葉の板(foliage)が多い樹木は、AR用に板を間引いて残りを少し大きくする(見た目の密度は保ち、ファイルを小さく) */
+const _thinCache = new WeakMap();
+function thinFoliageForAR(geo, keep = 0.45){
+  if(_thinCache.has(geo)) return _thinCache.get(geo);
+  const pos = geo.attributes.position, idx = geo.index;
+  if(!idx || pos.count < 12000){ _thinCache.set(geo, geo); return geo; }
+  const a = idx.array, n = pos.count, parent = new Int32Array(n).map((_, i) => i);
+  const find = (x) => { while(parent[x] !== x){ parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  for(let i=0; i<a.length; i+=3){ const r = find(a[i]); parent[find(a[i + 1])] = r; parent[find(a[i + 2])] = r; }
+  const rnd = mulberry32(7), keepOf = new Map(), center = new Map();
+  for(let i=0; i<n; i++){
+    const r = find(i);
+    if(!keepOf.has(r)){ keepOf.set(r, rnd() < keep); center.set(r, [0, 0, 0, 0]); }
+    const c = center.get(r); c[0] += pos.getX(i); c[1] += pos.getY(i); c[2] += pos.getZ(i); c[3]++;
+  }
+  const out = floatGeometry(geo), op = out.attributes.position, grow = Math.min(1.5, 1 / Math.sqrt(keep));
+  for(let i=0; i<n; i++){
+    const c = center.get(find(i)), k = c[3];
+    op.setXYZ(i, c[0] / k + (pos.getX(i) - c[0] / k) * grow, c[1] / k + (pos.getY(i) - c[1] / k) * grow, c[2] / k + (pos.getZ(i) - c[2] / k) * grow);
+  }
+  const kept = [];
+  for(let i=0; i<a.length; i+=3) if(keepOf.get(find(a[i]))) kept.push(a[i], a[i + 1], a[i + 2]);
+  out.setIndex(kept);
+  const thin = compactGeometry(out);
+  _thinCache.set(geo, thin);
+  return thin;
+}
+/* 三角形から使われなくなった頂点を詰める(書き出すファイルは頂点の数で大きさが決まる) */
+function compactGeometry(geo){
+  const idx = geo.index.array, map = new Map(), order = [];
+  const nidx = new Uint32Array(idx.length);
+  for(let i=0; i<idx.length; i++){
+    let v = map.get(idx[i]);
+    if(v === undefined){ v = order.length; map.set(idx[i], v); order.push(idx[i]); }
+    nidx[i] = v;
+  }
+  const out = new THREE.BufferGeometry();
+  for(const [name, attr] of Object.entries(geo.attributes)){
+    const arr = new attr.array.constructor(order.length * attr.itemSize);
+    order.forEach((src, k) => { for(let j=0; j<attr.itemSize; j++) arr[k * attr.itemSize + j] = attr.array[src * attr.itemSize + j]; });
+    out.setAttribute(name, new THREE.BufferAttribute(arr, attr.itemSize, attr.normalized));
+  }
+  out.setIndex(new THREE.BufferAttribute(nidx, 1));
+  return out;
+}
+/* USDZ は両面表示に対応しないため、葉・水面などは裏向きの三角形を足して両面にする */
+const _twoSideCache = new WeakMap();
+function twoSidedForAR(geo){
+  if(_twoSideCache.has(geo)) return _twoSideCache.get(geo);
+  const out = geo.clone();
+  const a = geo.index ? Array.from(geo.index.array) : [...Array(geo.attributes.position.count).keys()];
+  const n = a.length;
+  for(let i=0; i<n; i+=3) a.push(a[i], a[i + 2], a[i + 1]);
+  out.setIndex(a);
+  _twoSideCache.set(geo, out);
+  return out;
+}
+function flatHollowForAR(o){
+  const d = LANDFORMS[o.userData.landform.kind];
+  const out = [];
+  const add = (geo, mat, y, scale = 1) => {
+    const g = geo.clone();
+    g.scale(scale, 1, scale);
+    g.translate(0, y, 0);
+    g.applyMatrix4(o.matrix);
+    out.push(new THREE.Mesh(g, mat));
+  };
+  const rim = makeRimDiscGeometry(d);
+  add(rim, new THREE.MeshStandardMaterial({ map: landTexture(d.surface), roughness: 1 }), 0.003);
+  if(d.water) add(rim, new THREE.MeshStandardMaterial({ color: 0x4e7c8a, roughness: 0.15, transparent: true, opacity: 0.85 }), 0.005, 0.86);
+  return out;
+}
+async function buildARUSDZ(){
+  const { USDZExporter } = await import('three/addons/exporters/USDZExporter.js');
+  saveLayoutNow();
+  const root = new THREE.Group();
+  placedGroup.updateMatrixWorld(true);
+  const inv = placedGroup.matrixWorld.clone().invert();
+  const shown = (c) => { for(let p = c; p && p !== placedGroup; p = p.parent) if(!p.visible) return false; return true; };
+  for(const o of placedGroup.children){
+    const lf = o.userData.landform;
+    if(lf && LANDFORMS[lf.kind].type === 'hollow'){ flatHollowForAR(o).forEach(m => root.add(m)); continue; }
+    const raise = lf ? 0 : Math.max(0, -landformOffset(o.position.x, o.position.z));
+    const ground = lf ? -Infinity : o.position.y + (o.userData.sink || 0) + raise;
+    const clamp = !lf && ((o.userData.sink || 0) > 0.002 || raise > 0);   // 埋めた部分がある物だけ形を作り直す
+    o.traverse(c => {
+      if(!c.isMesh || c.userData.noHull || !shown(c) || !c.material || !c.material.isMeshStandardMaterial) return;
+      const mtx = new THREE.Matrix4().multiplyMatrices(inv, c.matrixWorld);
+      let srcGeo = c.material.userData.foliage ? thinFoliageForAR(c.geometry) : c.geometry;
+      if(c.material.side === THREE.DoubleSide && (c.material.userData.foliage || c.material.transparent)) srcGeo = twoSidedForAR(srcGeo);
+      if(!srcGeo.attributes.normal){ srcGeo = floatGeometry(srcGeo); srcGeo.computeVertexNormals(); }
+      let mesh;
+      if(clamp){
+        const g = floatGeometry(srcGeo);
+        g.applyMatrix4(mtx);
+        if(raise) g.translate(0, raise, 0);
+        const p = g.attributes.position;
+        for(let i=0; i<p.count; i++) if(p.getY(i) < ground) p.setY(i, ground);
+        mesh = new THREE.Mesh(g, arMaterial(c.material, c.geometry));
+        mesh.userData.ownGeometry = true;
+      }else{   // 同じ素材の形は共有して書き出す(ファイルが小さくなる)
+        mesh = new THREE.Mesh(srcGeo, arMaterial(c.material, c.geometry));
+        mtx.decompose(mesh.position, mesh.quaternion, mesh.scale);
+      }
+      root.add(mesh);
+    });
+  }
+  if(!root.children.length) throw new Error('配置がありません');
+  // 配置の中心を原点に(高さはそのまま。Quick Look では原点のある所が床に置かれる)
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  root.position.set(-(box.min.x + box.max.x) / 2, 0, -(box.min.z + box.max.z) / 2);
+  const scene = new THREE.Group();
+  scene.add(root);
+  scene.updateMatrixWorld(true);
+  const data = await new USDZExporter().parseAsync(scene, {
+    quickLookCompatible: true, maxTextureSize: 1024,
+    ar: { anchoring: { type: 'plane' }, planeAnchoring: { alignment: 'horizontal' } },
+  });
+  root.traverse(m => { if(m.isMesh){ if(m.userData.ownGeometry) m.geometry.dispose(); m.material.dispose(); } });
+  return new Blob([data], { type: 'model/vnd.usdz+zip' });
+}
+const iosArBtn = document.getElementById('ios-ar-btn');
+async function openARQuickLook(){
+  if(!placedGroup.children.length){ alert('配置がありません。先に素材を置くか、共有リンクから開いてください。'); return; }
+  const label = iosArBtn.textContent;
+  iosArBtn.disabled = true; iosArBtn.textContent = '準備中…';
+  try{
+    const url = URL.createObjectURL(await buildARUSDZ());
+    const a = document.createElement('a');
+    a.setAttribute('rel', 'ar');
+    a.setAttribute('download', 'sekitei.usdz');
+    a.href = `${url}#allowsContentScaling=0`;   // 実物大のまま(指で拡大縮小させない)
+    a.appendChild(document.createElement('img'));
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 1000);
+  }catch(err){
+    alert(`ARの準備に失敗しました。\n(${err.message || err})`);
+  }finally{
+    iosArBtn.disabled = false; iosArBtn.textContent = label;
+  }
+}
+
+const shareDlg = document.getElementById('share-dlg');
+function loadQRLib(){
+  if(window.qrcode) return Promise.resolve(window.qrcode);
+  return new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = './vendor/qrcode/qrcode.js';
+    sc.onload = () => res(window.qrcode);
+    sc.onerror = () => rej(new Error('QRコードの部品を読み込めませんでした'));
+    document.head.appendChild(sc);
+  });
+}
+async function openShareDialog(){
+  const url = await makeShareURL();
+  document.getElementById('share-url').value = url;
+  const img = document.getElementById('share-qr');
+  img.removeAttribute('src');
+  try{
+    const qrcode = await loadQRLib();
+    const qr = qrcode(0, 'L');
+    qr.addData(url);
+    qr.make();
+    img.src = qr.createDataURL(4, 4);
+    img.hidden = false;
+  }catch(err){ img.hidden = true; console.warn(err); }
+  document.getElementById('share-send').hidden = !navigator.share;
+  if(shareDlg.showModal) shareDlg.showModal(); else shareDlg.setAttribute('open', '');
+}
+document.getElementById('share-btn').addEventListener('click', openShareDialog);
+iosArBtn.addEventListener('click', () => arQuickLook ? openARQuickLook() : openShareDialog());
+document.getElementById('share-close').addEventListener('click', () => shareDlg.close ? shareDlg.close() : shareDlg.removeAttribute('open'));
+document.getElementById('share-copy').addEventListener('click', async (e) => {
+  const input = document.getElementById('share-url');
+  try{ await navigator.clipboard.writeText(input.value); }
+  catch(err){ input.select(); document.execCommand('copy'); }
+  e.target.textContent = 'コピーしました';
+  setTimeout(() => { e.target.textContent = 'リンクをコピー'; }, 1500);
+});
+document.getElementById('share-send').addEventListener('click', () => {
+  navigator.share({ title: `石庭 — ${plans ? currentPlan().name : '配置'}`, url: document.getElementById('share-url').value }).catch(() => {});
+});
+document.getElementById('usdz-dl').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  try{
+    const blob = await buildARUSDZ();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `sekitei-${plans ? plans.active : 'A'}-${dateStamp()}.usdz`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }catch(err){ alert(`USDZの書き出しに失敗しました。\n(${err.message || err})`); }
+  finally{ e.target.disabled = false; }
 });
 
 /* ---------- アンドゥ ---------- */
@@ -4237,6 +4555,7 @@ rebuildTerrain();
 window.__appReady = true;   // 初期化が最後まで到達した時点で起動成功とみなす
 /* リアル素材 → 保存済みGLB → 配置レイアウト の順で復元(配置がこれらのモデルを参照するため) */
 loadManifestPresets().then(restoreSavedGLBs).then(loadSavedLayout)
+  .then(() => importSharedFromHash().catch(err => console.warn('共有リンクの取り込みに失敗:', err)))
   .then(() => { thumbsReady = true; scheduleThumbs(); });
 
 /* 動作確認用(URLに ?debug を付けたときだけ公開) */
@@ -4251,7 +4570,8 @@ if(new URLSearchParams(location.search).has('debug')){
                        uiPanel, openUIPanel, closeUIPanel, drawPanel, handleUIAction, uiHitFor,
                        setHudActive: (on) => { hudActive = on; hud.visible = on; hudSnap = true; markUIDirty(); },
                        uiDragInfo: () => ({ dragging: !!uiDrag, hudPinned, panelPose: panelPose && panelPose.toArray() }),
-                       LANDFORMS, landformOffset, resnapOnLand, adjustLandHeight, landVolume, landSummary, objectUnderRay, applyLayout, undo, objAction };
+                       LANDFORMS, landformOffset, resnapOnLand, adjustLandHeight, landVolume, landSummary, objectUnderRay, applyLayout, undo, objAction,
+                       makeShareURL, buildARUSDZ, arQuickLook };
 }
 
 /* ================= メインループ ================= */

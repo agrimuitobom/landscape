@@ -2,7 +2,7 @@
    現場(庭)は電波が弱いことが多いので、一度開いたら通信なしでも起動できるようにする。
    - アプリ本体・素材一覧: ネット優先(3秒で諦めてキャッシュ)。更新がすぐ反映される
    - 同梱の three.js(vendor)・フォント・presets の GLB: キャッシュを先に返し、裏で最新に更新 */
-const VERSION = 'sekitei-v2';
+const VERSION = 'sekitei-v3';
 const THREE_BASE = './vendor/three/';
 const PRECACHE = [
   './',
@@ -15,6 +15,9 @@ const PRECACHE = [
   THREE_BASE + 'addons/controls/OrbitControls.js',
   THREE_BASE + 'addons/libs/meshopt_decoder.module.js',
   THREE_BASE + 'addons/utils/BufferGeometryUtils.js',
+  THREE_BASE + 'addons/exporters/USDZExporter.js',   // iPhoneのARで見る
+  THREE_BASE + 'addons/libs/fflate.module.js',
+  './vendor/qrcode/qrcode.js',                        // 共有リンクのQRコード
 ];
 
 self.addEventListener('install', (event) => {
