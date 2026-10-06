@@ -31,6 +31,24 @@ npx @gltf-transform/cli optimize 元のファイル.glb presets/rock_moss_01.glb
 - `.gltf`＋別ファイル（.bin / .jpg）の形式でダウンロードした場合も、上のコマンドで 1 つの `.glb` にまとまります。
 - **Git LFS は使わないでください**（GitHub Pages が LFS のファイルを配信できないため）。
 
+### スキャンに写り込んだ地面を取り除く
+
+石・灯籠などをスキャンすると、まわりの地面も一緒に写り込みます。
+`crop-scan.mjs` で地面を自動で見つけて取り除き、本体だけにできます（地面が傾いていても水平に直します）。
+
+```bash
+cd tools && npm install
+node crop-scan.mjs Scaniverse_xxxx.glb rock-crop.glb
+npx gltf-transform optimize rock-crop.glb ../presets/rock_scan_01.glb \
+  --compress meshopt --texture-compress webp --texture-size 2048 \
+  --simplify-ratio 0.4 --simplify-error 0.001
+```
+
+- 地面から3cm以上高い部分のうち、いちばん大きいかたまりを本体とみなします。離れた小石や草は消えます。
+- 本体が低い（平石・飛石など）ときは `--cut 0.015` のように小さくします。
+- 根元に草が残るときは `--margin 0.005`（本体の輪郭からどこまで残すか、m）を小さくします。
+- スキャンのテクスチャは 8192px と大きいため、`--texture-size 2048` で十分です（1MB 前後になります）。
+
 ### 樹木はリーフカード方式で軽量化する
 
 Poly Haven の樹木は葉を1枚ずつ立体で作ってあり、数百万ポリゴン・100MB 前後あります。

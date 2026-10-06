@@ -416,6 +416,7 @@
       <tr><td>X ボタン（左手）</td><td>タップ＝指している物（選択中の物）を複製／長押し＝全削除</td></tr>
       <tr><td>Y ボタン（左手）</td><td>タップ＝直前の操作を元に戻す／長押し＝MRを終了</td></tr>
       <tr><td>操作盤・パネル（Quest）</td><td>レーザーを当ててトリガー（手ならつまむ）。操作盤は視線の下に付いてきます</td></tr>
+      <tr><td>築山・窪み</td><td>「水・地面」の分類から置く。置いた後スティック上下で高さ（深さ）、大きさモードで広さ。上に木や石を置くと面に乗る。動かす・消すときは縁の白い棒（持ち手）を指す</td></tr>
       <tr><td>操作盤・パネルの移動</td><td>ボタン以外の余白をトリガーでつかんで動かす（つかんだままスティック上下で遠く／近く）。置いた操作盤はその場に固定</td></tr>
       <tr><td>上部の素材ボタン（MR中）</td><td>サムネイル一覧から置く素材を選ぶ（石・樹木などで絞り込み）</td></tr>
       <tr><td>選択中の物のバー（MR中・画面下）</td><td>最後に置いた／つかんだ物を ↺↻15°回転・▼▲5cm根入れ・複製・削除</td></tr>
@@ -587,7 +588,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 60);
 camera.position.set(1.8, 1.5, 2.6);
 
-const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, stencil:true });   // stencil: 窪みの口の形を記録する
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
@@ -643,6 +644,7 @@ const shadowGround = new THREE.Mesh(
   new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
 );
 shadowGround.rotation.x = -Math.PI/2;
+outsideHole(shadowGround.material);   // 窪みの口の上には影を落とさない
 shadowGround.receiveShadow = true;
 shadowGround.visible = false;
 scene.add(shadowGround);
@@ -675,7 +677,7 @@ function makeKaresansuiGround(){
   tex.colorSpace = THREE.SRGBColorSpace;
   const mesh = new THREE.Mesh(
     new THREE.CircleGeometry(3.2, 64),
-    new THREE.MeshStandardMaterial({ map:tex, roughness:1 })
+    outsideHole(new THREE.MeshStandardMaterial({ map:tex, roughness:1 }))
   );
   mesh.rotation.x = -Math.PI/2;
   mesh.position.y = -0.002;
@@ -1066,6 +1068,208 @@ function makeLawn(){
   return g;
 }
 
+/* ================= 築山・窪み(地形をつくる) =================
+   更地に高低差をつけるための素材。丸い小山(築山)と、池・流れ用の窪み。
+   - 高さ/深さ(最大1m)は横の大きさとは別に持ち、スティック上下で変える(userData.landform.h)
+   - 上に置いた木や石はその面の高さに乗り、築山を動かす・高さを変えると一緒に上下する
+   - 窪みは「穴の口」をステンシルに書き、その内側だけ窪みの面を描く。
+     パススルーでは現実の地面が仮想物を隠さないため、こうしないと穴の側面が地面越しに透けて見える */
+const LAND_TEX = {};
+function landTexture(surface){
+  if(surface === 'lawn') return lawnTexture(6);
+  if(!LAND_TEX[surface]){
+    const [base, cols, n, rmin, rmax] = {
+      moss:   ['#4D6833', ['#3E5829', '#5D7B3D', '#6C8946', '#34492A', '#7A9450'], 3200, 1, 4],
+      gravel: ['#B4B0A2', ['#A7A396', '#8F8C80', '#C5C1B2', '#7D7A70'], 1500, 2, 5],
+      soil:   ['#7A6247', ['#6B553C', '#8A7154', '#5E4A34', '#94805F'], 2200, 1, 3],
+      bed:    ['#6E634F', ['#5F5544', '#7C7059', '#524939', '#857961'], 1800, 1, 4],   // 池の底(濡れた土)
+    }[surface];
+    LAND_TEX[surface] = makeSpeckleTexture(base, cols, n, rmin, rmax);
+    LAND_TEX[surface].repeat.set(2, 2);
+  }
+  return LAND_TEX[surface];
+}
+
+/* type: mound=築山 / hollow=窪み。r=半径(m)・aspect=奥行きの倍率・h=初期の高さ/深さ(m)・bend=蛇行 */
+const LANDFORMS = {
+  'mound-lawn':   { name: '築山（芝）',   type: 'mound',  surface: 'lawn',   r: 1.0, aspect: 1,   h: 0.4, seed: 3 },
+  'mound-moss':   { name: '築山（苔）',   type: 'mound',  surface: 'moss',   r: 1.0, aspect: 1,   h: 0.4, seed: 5 },
+  'mound-gravel': { name: '築山（砂利）', type: 'mound',  surface: 'gravel', r: 1.0, aspect: 1,   h: 0.3, seed: 7 },
+  'mound-soil':   { name: '築山（土）',   type: 'mound',  surface: 'soil',   r: 1.0, aspect: 1,   h: 0.4, seed: 9 },
+  'pond':         { name: '窪み（池）',   type: 'hollow', surface: 'bed',    r: 1.0, aspect: 1,   h: 0.35, seed: 11, water: true },
+  'stream':       { name: '窪み（流れ）', type: 'hollow', surface: 'gravel', r: 0.4, aspect: 3.5, h: 0.2, seed: 13, water: true, bend: true },
+  'hollow-soil':  { name: '窪み（土）',   type: 'hollow', surface: 'soil',   r: 1.0, aspect: 1,   h: 0.3, seed: 17 },
+};
+const LAND_MAX_H = 1.0, LAND_MIN_H = 0.05;
+for(const [id, d] of Object.entries(LANDFORMS)) d.id = id;
+
+/* 形の定義(メッシュ内の座標 x,z はメートル。横の拡縮はインスタンスの scale が掛かる) */
+function landRim(d, th){ return 1 + 0.07 * valueNoise3(Math.cos(th) * 1.7, Math.sin(th) * 1.7, 0.37, d.seed); }   // 縁の不揃い
+function landBend(d, v){ return d.bend ? 0.35 * Math.sin(v * 2.2) : 0; }
+function landProfileT(d, t){   // 中心(t=0)〜縁(t=1)の高さの割合
+  if(t >= 1) return 0;
+  if(d.type === 'mound') return 0.5 + 0.5 * Math.cos(Math.PI * t);   // 裾がなだらかに広がる小山
+  const q = Math.min(1, (1 - t) / 0.55);
+  return q * q * (3 - 2 * q);   // 窪み: 底は平ら・岸はなだらか
+}
+function landLump(d, u, v){ return d.type === 'mound' ? 1 + 0.06 * valueNoise3(u * 2.3, v * 2.3, 1.7, d.seed + 5) : 1; }
+/* 任意の点(メッシュ内の x,z)での高さの割合 0〜1 */
+function landProfileAt(d, x, z){
+  const v = z / (d.r * d.aspect), u = x / d.r - landBend(d, v);
+  const rr = Math.hypot(u, v);
+  if(rr >= 1.1) return 0;
+  return landProfileT(d, rr / landRim(d, Math.atan2(v, u))) * landLump(d, u, v);
+}
+function landXZ(d, t, th){
+  const R = landRim(d, th), u = t * R * Math.cos(th), v = t * R * Math.sin(th);
+  return [(u + landBend(d, v)) * d.r, v * d.r * d.aspect, u, v];
+}
+
+/* 高さ1mあたりの体積(m³)。盛土・掘削量の目安に使う */
+function landUnitVolume(d){
+  if(d.vunit != null) return d.vunit;
+  const ex = (1.1 + 0.4) * d.r, ez = 1.1 * d.r * d.aspect, step = 0.02;
+  let sum = 0;
+  for(let x = -ex; x <= ex; x += step) for(let z = -ez; z <= ez; z += step) sum += landProfileAt(d, x, z);
+  return (d.vunit = sum * step * step);
+}
+
+function makeLandformGeometry(d, NR = 22, NS = 72){
+  const sign = d.type === 'mound' ? 1 : -1;
+  const pos = [], uv = [], idx = [];
+  const push = (t, th) => {
+    const [x, z, u, v] = landXZ(d, t, th);
+    pos.push(x, sign * landProfileT(d, t) * landLump(d, u, v), z);
+    uv.push(x * 0.5, z * 0.5);
+  };
+  push(0, 0);
+  for(let i=1; i<=NR; i++) for(let j=0; j<NS; j++) push(i / NR, j / NS * Math.PI * 2);
+  const at = (i, j) => 1 + (i - 1) * NS + (j % NS);
+  for(let j=0; j<NS; j++) idx.push(0, at(1, j + 1), at(1, j));
+  for(let i=1; i<NR; i++) for(let j=0; j<NS; j++){
+    idx.push(at(i, j), at(i, j + 1), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1), at(i + 1, j));
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  // 面が上向きになる巻き順にそろえる
+  if(geo.attributes.normal.getY(0) < 0){
+    for(let k=0; k<idx.length; k+=3) [idx[k + 1], idx[k + 2]] = [idx[k + 2], idx[k + 1]];
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+  }
+  return geo;
+}
+/* 縁の形の平らな板(穴の口・水面に使う) */
+function makeRimDiscGeometry(d, NS = 72){
+  const pos = [0, 0, 0], idx = [];
+  for(let j=0; j<NS; j++){ const [x, z] = landXZ(d, 1, j / NS * Math.PI * 2); pos.push(x, 0, z); }
+  for(let j=0; j<NS; j++) idx.push(0, 1 + (j + 1) % NS, 1 + j);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+/* 窪みの内側だけに描く材質(ステンシル値1 = 窪みの口) */
+function insideHole(mat){
+  Object.assign(mat, { stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc,
+                       stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp });
+  return mat;
+}
+/* 地面(プレビューの床・影を受ける面)は窪みの口には描かない */
+function outsideHole(mat){
+  Object.assign(mat, { stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc,
+                       stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp });
+  return mat;
+}
+const MAT_LAND_HANDLE = new THREE.MeshStandardMaterial({ color: 0xEAE7DC, roughness: 0.6 });
+
+function makeLandform(d){
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ map: landTexture(d.surface), roughness: d.surface === 'bed' ? 0.75 : 1 });
+  if(d.surface === 'lawn') mat.userData.role = 'lawn';
+  if(d.type === 'hollow') insideHole(mat);
+  const surf = new THREE.Mesh(makeLandformGeometry(d), mat);
+  surf.userData.landSurface = true;
+  surf.scale.y = d.h;
+  g.add(surf);
+  if(d.type === 'hollow'){
+    // 穴の口: 色も深度も書かず、ステンシルだけ書く。地面より先に描く
+    const cap = new THREE.Mesh(makeRimDiscGeometry(d), new THREE.MeshBasicMaterial({
+      colorWrite: false, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
+      stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc,
+      stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp }));
+    cap.renderOrder = -10;
+    Object.assign(cap.userData, { noShadow: true, noRay: true });
+    surf.add(cap);
+    if(d.water){
+      const water = new THREE.Mesh(makeRimDiscGeometry(d), insideHole(MAT.water.clone()));
+      Object.assign(water.userData, { landWater: true, noShadow: true, noRay: true });
+      surf.add(water);
+    }
+  }
+  // 持ち手: 築山・窪みの面は「地面」として扱う(上に物を置ける)ため、動かす・消すときはこれを指す
+  const handle = new THREE.Group();
+  handle.userData.landHandle = true;
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.26, 8), MAT_LAND_HANDLE);
+  post.position.y = 0.13;
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 10), MAT_LAND_HANDLE);
+  ball.position.y = 0.28;
+  const hit = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));   // 狙いやすい当たり判定
+  hit.position.y = 0.24;
+  for(const m of [post, ball, hit]){ m.userData.noHull = true; m.userData.noShadow = m === hit; handle.add(m); }
+  const [hx, hz] = landXZ(d, 1.05, 0);
+  handle.position.set(hx, 0, hz);
+  g.add(handle);
+  return g;
+}
+
+/* 高さ(m)を反映。横の拡縮(inst.scale)とは独立に保つ */
+function landWaterT(f){   // 窪みの深さの割合 f の位置(中心からの割合)
+  let lo = 0, hi = 1;
+  for(let k=0; k<24; k++){ const m = (lo + hi) / 2; landProfileT({ type: 'hollow' }, m) > f ? lo = m : hi = m; }
+  return lo;
+}
+function applyLandform(inst){
+  const lf = inst.userData.landform;
+  if(!lf) return;
+  const s = inst.scale.x;
+  inst.traverse(o => {
+    if(o.userData.landSurface) o.scale.y = lf.h / s;
+    if(o.userData.landHandle) o.scale.setScalar(1 / s);
+    if(o.userData.landWater){
+      const f = Math.min(0.08, 0.3 * lf.h) / lf.h;   // 水面は縁から8cm下(浅い窪みは3割)
+      o.position.y = -f;
+      const t = landWaterT(f) * 1.06;   // 岸の中まで少し広げて隙間を作らない
+      o.scale.set(t, 1, t);
+    }
+  });
+}
+function isLandform(o){ return !!(o && o.userData.landform); }
+function landVolume(o){
+  const lf = o.userData.landform;
+  return landUnitVolume(LANDFORMS[lf.kind]) * lf.h * o.scale.x * o.scale.x;
+}
+const fmtVol = (v) => v < 10 ? `${v.toFixed(v < 1 ? 2 : 1)}m³` : `${Math.round(v)}m³`;
+const TRUCK_M3 = 1.2;   // 2tダンプ1台に積める土の目安(土1m³≈1.6t)
+/* ライブラリ・パレットの寸法表示(築山・窪みは持ち手を除いた広さと、高さ/深さ) */
+function landWD(d, s = 1){ return [2 * d.r * s, 2 * d.r * d.aspect * s]; }
+function modelDims(m){
+  if(!m.landform) return fmtDims(m.size);
+  const [w, dp] = landWD(m.landform);
+  return `${fmtLen(w)} × ${fmtLen(dp)}・${m.landform.type === 'mound' ? '高さ' : '深さ'}${fmtLen(m.landform.h)}`;
+}
+function modelHeightText(m){
+  return m.landform ? `${m.landform.type === 'mound' ? '高さ' : '深さ'}${fmtLen(m.landform.h)}` : `高${fmtLen(m.size.y)}`;
+}
+function landSummary(o){
+  const d = LANDFORMS[o.userData.landform.kind], v = landVolume(o);
+  return `${d.type === 'mound' ? '高さ' : '深さ'}${fmtLen(o.userData.landform.h)}・${d.type === 'mound' ? '盛土' : '掘削'}約${fmtVol(v)}（2tダンプ約${Math.max(1, Math.ceil(v / TRUCK_M3))}台分）`;
+}
+
 /* ================= モデルライブラリ ================= */
 
 const loader = new GLTFLoader();
@@ -1221,7 +1425,7 @@ function applyFoliage(mat){
 }
 
 /* 底面中心を原点に正規化してテンプレート化 */
-function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='', kind='none', density=null, category=null } = {}){
+function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, real=false, credit='', kind='none', density=null, category=null, landform=null } = {}){
   const box = new THREE.Box3().setFromObject(rawRoot);
   if(box.isEmpty()){ alert(`「${name}」にメッシュが見つかりませんでした`); return null; }
   const size = box.getSize(new THREE.Vector3());
@@ -1241,7 +1445,7 @@ function addModel(name, rawRoot, { preset=false, lift=0, select=false, id=null, 
   let volume = computeVolume(template);
   const boxVol = size.x * size.y * size.z;
   if(!(volume >= 0.0005 && volume > boxVol * 0.02 && volume < boxVol * 1.05)) volume = 0;
-  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset, real, credit, volume, category };
+  const entry = { id: id || (preset ? 'p:' + name : newFileId()), name, template, size, tris: countTris(rawRoot), preset, real, credit, volume, category, landform };
   setKind(entry, kind);
   if(density != null && !entry.plant) entry.density = density;   // manifest で比重を直接指定した場合
   models.push(entry);
@@ -1373,7 +1577,7 @@ function refreshLibraryUI(){
       ${m.thumb ? `<img class="m-thumb" src="${m.thumb}" alt="">` : '<span class="mark"></span>'}
       <span class="m-info">
         <span class="m-name">${escapeHtml(m.name)}</span>
-        <span class="m-dims">${fmtDims(m.size)}${w != null ? `　<b>${fmtWeight(w)}</b>` : ''}${showTris ? `　${m.tris >= 10000 ? (m.tris/10000).toFixed(1) + '万' : m.tris}△` +(heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : '') : ''}</span>
+        <span class="m-dims">${modelDims(m)}${w != null ? `　<b>${fmtWeight(w)}</b>` : ''}${showTris ? `　${m.tris >= 10000 ? (m.tris/10000).toFixed(1) + '万' : m.tris}△` +(heavy ? '<span class="heavy">（重いので軽量化推奨）</span>' : '') : ''}</span>
         ${m.density && !m.volume ? '<span class="m-credit">形状から体積を計算できないため重量は出せません</span>' : ''}
         ${m.credit ? `<span class="m-credit">${escapeHtml(m.credit)}</span>` : ''}${densitySelect}
       </span>
@@ -1731,10 +1935,11 @@ function diagnosticsText(){
    パススルーでは現実の地面が仮想物を隠してくれないため、各設置物の地表レベルより下を
    クリッピング平面で描画しない(影も同様)。平面は設置物ごとに持つので傾斜地でも各自の地表で切れる。 */
 function prepareInstance(inst){
-  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  // 築山・窪みは地面そのものなので切らない
+  const plane = isLandform(inst) ? null : new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   inst.userData.clipPlane = plane;
   // 複製では onBeforeCompile が引き継がれないため、葉の材質調整をかけ直す
-  const withClip = (mat) => { const c = applyFoliage(mat.clone()); c.clippingPlanes = [plane]; c.clipShadows = true; return c; };
+  const withClip = (mat) => { const c = applyFoliage(mat.clone()); if(plane){ c.clippingPlanes = [plane]; c.clipShadows = true; } return c; };
   inst.traverse(o => {
     if(o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(withClip) : withClip(o.material);
   });
@@ -1746,6 +1951,7 @@ function makeInstance(m){
   inst.userData.modelName = m.name;
   inst.userData.baseSize = m.size;
   inst.userData.sink = 0;
+  if(m.landform) inst.userData.landform = { kind: m.landform.id, h: m.landform.h };
   // 成長表示用の入れ子: 利用者の拡縮(inst.scale)とは別に、樹木の年数分の成長をここで掛ける
   const grow = new THREE.Group();
   grow.name = 'growth';
@@ -1753,11 +1959,13 @@ function makeInstance(m){
   inst.add(grow);
   prepareInstance(inst);
   applySeasonTo(inst);
+  applyLandform(inst);
   return inst;
 }
 function removeInstance(inst){
   if(selectedObj === inst) setSelected(null);
   placedGroup.remove(inst);
+  if(isLandform(inst)) resnapOnLand();   // 上に乗っていた物を地面へ戻す
   inst.traverse(o => {   // 複製した材質だけ破棄(テクスチャ・形状はテンプレートと共有)
     if(o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => mt.dispose());
   });
@@ -1819,11 +2027,11 @@ function rebuildTerrain(){
     terrainMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x5F7052, wireframe: true, transparent: true, opacity: 0.35 }));
     terrainMesh.material.visible = terrainShown;
     // 影を受ける面(深度とのちらつき防止に少し浮かせる)
-    terrainShadow = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    terrainShadow = new THREE.Mesh(geo, outsideHole(new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })));
     terrainShadow.position.y = SHADOW_LIFT;
     terrainShadow.receiveShadow = true;
     // PC表示用の地面(MR中は現実の地面が見えるので出さない)
-    terrainSurface = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xDDD9CA, roughness: 1 }));
+    terrainSurface = new THREE.Mesh(geo, outsideHole(new THREE.MeshStandardMaterial({ color: 0xDDD9CA, roughness: 1 })));
     terrainSurface.receiveShadow = true;
     terrainGroup.add(terrainMesh, terrainShadow, terrainSurface);
     // 記録した点の目印
@@ -1866,9 +2074,71 @@ function setGroundPts(pts, { snap = true } = {}){
 /* 地形が変わったら、設置物の根元を新しい地表の高さに合わせ直す(根入れ深さは保つ) */
 function snapAllToTerrain(){
   for(const o of placedGroup.children){
-    o.position.y = terrainHeight(o.position.x, o.position.z) - (o.userData.sink || 0);
+    o.position.y = terrainHeight(o.position.x, o.position.z)
+                 + (isLandform(o) ? 0 : landformOffset(o.position.x, o.position.z)) - (o.userData.sink || 0);
   }
+  placedGroup.children.forEach(markOnLand);
   scheduleSave();
+}
+
+/* ---------- 築山・窪みの上に置いた物の高さ ----------
+   地表の高さ = 記録した地面(terrainHeight) + 築山・窪みの分。重なった築山は高い方、窪みは深い方を使う */
+function setLandHeightFromItem(inst, item){
+  const lf = inst.userData.landform;
+  if(!lf) return;
+  const h = Number(item.land);
+  if(h > 0) lf.h = THREE.MathUtils.clamp(h, LAND_MIN_H, LAND_MAX_H);
+  applyLandform(inst);
+}
+function landSurfaceOf(inst){
+  let m = null;
+  inst.traverse(o => { if(o.userData.landSurface) m = o; });
+  return m;
+}
+const _lfP = new THREE.Vector3();
+/* placedGroup 内の座標(x, z)で、築山・窪みが地表を上げ下げする量(m) */
+function landformOffset(x, z, skip = null){
+  let up = 0, down = 0;
+  placedGroup.updateWorldMatrix(true, false);
+  for(const o of placedGroup.children){
+    if(!isLandform(o) || o === skip) continue;
+    const surf = landSurfaceOf(o);
+    if(!surf) continue;
+    o.updateWorldMatrix(false, true);
+    _lfP.set(x, 0, z);
+    placedGroup.localToWorld(_lfP);
+    surf.worldToLocal(_lfP);
+    const d = LANDFORMS[o.userData.landform.kind];
+    const p = landProfileAt(d, _lfP.x, _lfP.z);
+    if(p <= 0) continue;
+    const dh = p * o.userData.landform.h;
+    if(d.type === 'mound') up = Math.max(up, dh); else down = Math.max(down, dh);
+  }
+  return up - down;
+}
+/* 築山・窪みの上に乗っている物。地形を変えたら、この物たちの高さを合わせ直す */
+const onLandSet = new WeakSet();
+function markOnLand(o){
+  if(!isLandform(o) && landformOffset(o.position.x, o.position.z) !== 0) onLandSet.add(o); else onLandSet.delete(o);
+}
+function resnapOnLand(){
+  for(const o of placedGroup.children){
+    if(isLandform(o) || o === grabbed) continue;
+    const off = landformOffset(o.position.x, o.position.z);
+    if(off === 0 && !onLandSet.has(o)) continue;
+    o.position.y = terrainHeight(o.position.x, o.position.z) + off - (o.userData.sink || 0);
+    if(off !== 0) onLandSet.add(o); else onLandSet.delete(o);
+  }
+}
+/* 築山の高さ・窪みの深さを変える。dh>0 で地表を上げる(築山は高く・窪みは浅く) */
+function adjustLandHeight(o, dh){
+  const lf = o.userData.landform, d = LANDFORMS[lf.kind];
+  const next = THREE.MathUtils.clamp(lf.h + (d.type === 'mound' ? dh : -dh), LAND_MIN_H, LAND_MAX_H);
+  if(next === lf.h) return false;
+  lf.h = next;
+  applyLandform(o);
+  resnapOnLand();
+  return true;
 }
 function groundSummary(){
   if(!groundPts.length) return '地面の記録なし（平らな床として扱います）';
@@ -1919,7 +2189,8 @@ function serializeLayout(){
       pos: [r(o.position.x), r(o.position.y), r(o.position.z)],
       rotY: r(o.rotation.y),
       scale: r(o.scale.x),
-      sink: r(o.userData.sink || 0)
+      sink: r(o.userData.sink || 0),
+      ...(o.userData.landform ? { land: r(o.userData.landform.h) } : {})   // 築山の高さ・窪みの深さ
     }))
   };
 }
@@ -1946,6 +2217,7 @@ function instantiateFromItem(m, item){
   inst.position.fromArray(item.pos);
   inst.rotation.y = item.rotY || 0;
   inst.scale.setScalar(THREE.MathUtils.clamp(item.scale || 1, 0.05, 10));
+  setLandHeightFromItem(inst, item);
   applyGrowth(inst);
   placedGroup.add(inst);
   return inst;
@@ -1960,6 +2232,7 @@ function applyLayout(data){
     if(!m){ missing++; continue; }
     instantiateFromItem(m, item);
   }
+  placedGroup.children.forEach(markOnLand);
   updateCount();
   updateLayoutStatus();
   return missing;
@@ -2100,8 +2373,14 @@ function setupHitTest(){
   });
 }
 
-/* コントローラーcのレイが床と交わる点(ヒットテスト優先・平面フォールバック) */
-function floorPointFor(c, frame){
+/* コントローラーcのレイが床と交わる点(ヒットテスト優先・平面フォールバック)
+   noLand: 築山・窪みの面を無視する(築山そのものを置く・動かすとき) */
+function floorPointFor(c, frame, { noLand = false } = {}){
+  // 築山・窪みの面(その上に木や石を置ける)
+  if(!noLand){
+    const p = landPointFor(c);
+    if(p) return p;
+  }
   // 地面を記録してあれば、その地形の面を最優先(屋外の起伏に追従)
   if(terrainMesh){
     setRayFrom(c);
@@ -2132,13 +2411,44 @@ function setRayFrom(c){
   raycaster.ray.direction.set(0,0,-1).applyMatrix4(tmpMat);
 }
 
+/* レイが築山・窪みの面に当たる点。窪みは「穴の口」越しに見えている所だけ
+   (口の外から地面越しに穴の側面へ当たった場合は、実際には地面に隠れているので使わない) */
+const _holePlane = new THREE.Plane(), _holeP = new THREE.Vector3(), _holeN = new THREE.Vector3(0, 1, 0);
+function landPointFor(c){
+  const surfs = [];
+  for(const o of placedGroup.children){
+    if(isLandform(o) && o !== grabbed){ const sf = landSurfaceOf(o); if(sf) surfs.push(sf); }
+  }
+  if(!surfs.length) return null;
+  setRayFrom(c);
+  for(const hit of raycaster.intersectObjects(surfs, false)){
+    let inst = hit.object;
+    while(inst.parent && inst.parent !== placedGroup) inst = inst.parent;
+    if(LANDFORMS[inst.userData.landform.kind].type === 'hollow'){
+      inst.getWorldPosition(_holeP);
+      _holePlane.setFromNormalAndCoplanarPoint(_holeN.set(0, 1, 0).applyQuaternion(placedGroup.getWorldQuaternion(_q)), _holeP);
+      if(raycaster.ray.intersectPlane(_holePlane, _holeP)){
+        hit.object.worldToLocal(_holeP);
+        if(landProfileAt(LANDFORMS[inst.userData.landform.kind], _holeP.x, _holeP.z) <= 0) continue;
+      }
+    }
+    return hit.point.clone();
+  }
+  return null;
+}
+
 function objectUnderRay(c){
   setRayFrom(c);
-  const hits = raycaster.intersectObjects(placedGroup.children, true);
-  if(!hits.length) return null;
-  let o = hits[0].object;
-  while(o.parent && o.parent !== placedGroup) o = o.parent;
-  return o.parent === placedGroup ? o : null;
+  for(const hit of raycaster.intersectObjects(placedGroup.children, true)){
+    if(hit.object.userData.noRay) continue;
+    let o = hit.object, handle = false;
+    while(o.parent && o.parent !== placedGroup){ if(o.userData.landHandle) handle = true; o = o.parent; }
+    if(o.parent !== placedGroup) continue;
+    // 築山・窪みの面は「地面」扱い(その上に置ける)。動かす・消すときは持ち手を指す
+    if(isLandform(o) && !handle) return null;
+    return o;
+  }
+  return null;
 }
 
 /* ---------- 複数案(A案・B案…) ----------
@@ -2224,6 +2534,7 @@ function rebuildGhost(){
     g.position.fromArray(item.pos);
     g.rotation.y = item.rotY || 0;
     g.scale.setScalar(item.scale || 1);
+    setLandHeightFromItem(g, item);
     applyGrowth(g);
     g.traverse(c => {
       if(!c.isMesh) return;
@@ -2285,7 +2596,7 @@ function modelHull(m){
   const mm = new THREE.Matrix4(), v = new THREE.Vector3();
   const pts = [];
   m.template.traverse(o => {
-    if(!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    if(!o.isMesh || !o.geometry || !o.geometry.attributes.position || o.userData.noHull) return;
     mm.multiplyMatrices(inv, o.matrixWorld);
     const pos = o.geometry.attributes.position;
     const stride = Math.max(1, Math.ceil(pos.count / 4000));
@@ -2340,7 +2651,10 @@ function renderPlanImage(){
       return toUV(it.pos[0] + X * cr + Z * sr, it.pos[2] - X * sr + Z * cr);
     });
     const sink = Number(it.sink) || 0;
-    rows.push({ no: rows.length + 1, m, it, outline, center: toUV(it.pos[0], it.pos[2]), s, sink,
+    // 築山・窪み: 高さ(深さ)と土量
+    const land = m.landform ? { d: m.landform, h: Number(it.land) || m.landform.h } : null;
+    if(land) land.vol = landUnitVolume(land.d) * land.h * s * s;
+    rows.push({ no: rows.length + 1, m, it, outline, center: toUV(it.pos[0], it.pos[2]), s, sink, land,
                 groundY: groundPts.length ? terrainHeight(it.pos[0], it.pos[2]) : it.pos[1] + sink, weight: modelWeight(m, s) });
   });
 
@@ -2382,15 +2696,20 @@ function renderPlanImage(){
     g.fillText(fmtGL(y), X(u) + 10, Y(v) - 8);
   }
 
-  // 設置物: 樹木は緑、石は灰、その他は茶
-  for(const r of rows){
-    const fill = r.m.plant ? 'rgba(95,130,70,.35)' : r.m.density ? 'rgba(120,122,112,.75)' : 'rgba(150,120,85,.45)';
-    const stroke = r.m.plant ? '#46543C' : r.m.density ? '#3B3D36' : '#6B4F36';
+  // 設置物: 樹木は緑、石は灰、その他は茶。築山(破線・薄茶)と窪み(破線・水色/茶)は下に敷く
+  const landStyle = (r) => r.land.d.type === 'mound' ? ['rgba(176,160,110,.28)', '#8A7550']
+                         : r.land.d.water ? ['rgba(78,124,138,.35)', '#3F6673'] : ['rgba(120,100,75,.25)', '#6B5A44'];
+  for(const r of [...rows.filter(r => r.land), ...rows.filter(r => !r.land)]){
+    const [fill, stroke] = r.land ? landStyle(r)
+      : [r.m.plant ? 'rgba(95,130,70,.35)' : r.m.density ? 'rgba(120,122,112,.75)' : 'rgba(150,120,85,.45)',
+         r.m.plant ? '#46543C' : r.m.density ? '#3B3D36' : '#6B4F36'];
     g.beginPath();
     r.outline.forEach(([u, v], i) => i ? g.lineTo(X(u), Y(v)) : g.moveTo(X(u), Y(v)));
     g.closePath();
     g.fillStyle = fill; g.fill();
+    g.setLineDash(r.land ? [10, 8] : []);
     g.strokeStyle = stroke; g.lineWidth = 2.5; g.stroke();
+    g.setLineDash([]);
   }
   for(const r of rows){   // 番号は輪郭の上に重ねて描く
     const [u, v] = r.center;
@@ -2426,7 +2745,7 @@ function renderPlanImage(){
   const tx = MAPW + 20;
   g.font = `700 28px ${FONT}`;
   g.fillText('一覧', tx, top + 20);
-  const cols = [['No', 0], ['名称', 50], ['寸法 幅×奥×高', 260], ['根入れ', 500], ['推定重量', 585], ['地盤高', 690]];
+  const cols = [['No', 0], ['名称', 50], ['寸法 幅×奥×高', 260], ['根入れ', 500], ['重量/土量', 585], ['地盤高', 690]];
   g.font = `700 19px ${FONT}`; g.fillStyle = '#4A4F44';
   cols.forEach(([t, x]) => g.fillText(t, tx + x, top + 62));
   g.strokeStyle = '#C9C5B4'; g.lineWidth = 1.5;
@@ -2437,7 +2756,8 @@ function renderPlanImage(){
   rows.forEach((r, i) => {
     const y = top + 104 + i * rowH;
     const sz = r.m.size;
-    const dims = `${fmtLen(sz.x * r.s)}×${fmtLen(sz.z * r.s)}×${fmtLen(sz.y * r.s)}`;
+    const [dw, dd] = r.land ? landWD(r.land.d, r.s) : [sz.x * r.s, sz.z * r.s];
+    const dims = `${fmtLen(dw)}×${fmtLen(dd)}×${r.land ? (r.land.d.type === 'mound' ? '' : '深') + fmtLen(r.land.h) : fmtLen(sz.y * r.s)}`;
     g.fillStyle = '#23271F';
     g.fillText(String(r.no), tx, y);
     let name = r.m.name;
@@ -2445,7 +2765,7 @@ function renderPlanImage(){
     g.fillText(name, tx + 50, y);
     g.fillText(dims, tx + 260, y);
     g.fillText(r.sink > 0.005 ? fmtLen(r.sink) : '—', tx + 500, y);
-    g.fillText(r.weight != null ? fmtWeight(r.weight) : '—', tx + 585, y);
+    g.fillText(r.land ? `${r.land.d.type === 'mound' ? '盛' : '掘'}${fmtVol(r.land.vol)}` : r.weight != null ? fmtWeight(r.weight) : '—', tx + 585, y);
     g.fillText(groundPts.length ? fmtGL(r.groundY) : '—', tx + 690, y);
     if(r.weight != null){ total += r.weight; stones++; }
   });
@@ -2453,6 +2773,12 @@ function renderPlanImage(){
   g.beginPath(); g.moveTo(tx, fy - 24); g.lineTo(W - 40, fy - 24); g.stroke();
   g.font = `700 21px ${FONT}`;
   g.fillText(stones ? `石 ${stones}個　合計 ${fmtWeight(total)}（目安・根入れ部分を含む）` : '石の重量: なし', tx, fy + 4);
+  const fill = rows.filter(r => r.land && r.land.d.type === 'mound').reduce((a, r) => a + r.land.vol, 0);
+  const cut = rows.filter(r => r.land && r.land.d.type === 'hollow').reduce((a, r) => a + r.land.vol, 0);
+  if(fill || cut){
+    g.fillText(`土量（目安）　${fill ? `盛土 ${fmtVol(fill)}` : ''}${fill && cut ? '・' : ''}${cut ? `掘削 ${fmtVol(cut)}` : ''}`
+             + `　2tダンプ1台≈${TRUCK_M3}m³`, tx, fy + 40);
+  }
   if(!rows.length){ g.font = `400 24px ${FONT}`; g.fillText('配置がありません', PAD + 40, top + 80); }
   return c;
 }
@@ -2549,8 +2875,11 @@ function duplicateTarget(t = grabbed || hovered || selectedObj){
   if(!t){ toast('複製する物に向けてA/Xを押してください'); return; }
   pushUndo();
   const clone = prepareInstance(t.clone(true));   // 材質とクリップ平面は複製先専用にする
-  clone.position.x += 0.4;
+  // 築山・窪みは隣に並べる(少し重ねて連なった起伏にする)。それ以外は40cm横へ
+  clone.position.x += isLandform(t) ? t.userData.baseSize.x * t.scale.x * 0.75 : 0.4;
   placedGroup.add(clone);
+  if(onLandSet.has(t)) onLandSet.add(clone);
+  resnapOnLand();   // 築山の上の物を複製してずらしたときも面の高さに合わせる
   setSelected(clone);
   updateCount();
   scheduleSave();
@@ -2704,7 +3033,7 @@ function drawHUD(){
   uiButton(hud, g, W - 106, G + 14, 90, 76, '▶', 'hud:next', { size: 36 });
   uiText(g, m ? m.name : '—', W / 2, G + 66, { size: 46, color: '#EAE7DC', bold: true, maxW: W - 260 });
   const { n, t, stones } = placedTotals();
-  uiText(g, `${m ? fmtDims(m.size) : '—'}${w != null ? '・' + fmtWeight(w) : ''}　／　設置${n}個${stones ? `・石${fmtWeight(t)}` : ''}${plans ? '・' + currentPlan().name : ''}`,
+  uiText(g, `${m ? modelDims(m) : '—'}${w != null ? '・' + fmtWeight(w) : ''}　／　設置${n}個${stones ? `・石${fmtWeight(t)}` : ''}${plans ? '・' + currentPlan().name : ''}`,
          W / 2, G + 126, { size: 28, maxW: W - 60 });
   uiText(g, lastTargetText || '物に向けると寸法・根入れ・重量を表示', W / 2, G + 168,
          { size: 28, bold: true, color: lastTargetText ? '#C9D8B8' : 'rgba(234,231,220,0.45)', maxW: W - 60 });
@@ -2770,7 +3099,7 @@ function drawPanel(){
       if(m.thumb && !m.thumbImg){ m.thumbImg = new Image(); m.thumbImg.onload = markUIDirty; m.thumbImg.src = m.thumb; }
       const w = modelWeight(m);
       uiButton(P, g, 40 + (k % 4) * (cw + 16), 200 + Math.floor(k / 4) * (ch + 14), cw, ch, m.name, 'pal:pick:' + i,
-               { on: i === activeIndex, img: m.thumbImg, sub: `高${fmtLen(m.size.y)}${w != null ? '・' + fmtWeight(w) : ''}`, size: 26 });
+               { on: i === activeIndex, img: m.thumbImg, sub: `${modelHeightText(m)}${w != null ? '・' + fmtWeight(w) : ''}`, size: 26 });
     });
     if(!list.length) uiText(g, 'この分類の素材はありません', W / 2, 400, { size: 30 });
     uiButton(P, g, 40, H - 170, 200, 84, '◀ 前', 'pal:page-');
@@ -2850,8 +3179,9 @@ function drawPanel(){
       '左 Y … 元に戻す（長押しでMR終了）',
       '手で操作 … 親指と人差し指でつまむ＝トリガー',
       '　回転・根入れ・複製・削除は操作盤の下段で',
-      '操作盤・メニューの移動 … 余白をトリガーでつかんで動かす',
-      '　つかんだままスティック上下で遠く／近く',
+      '操作盤・メニューの移動 … 余白をつかむ（スティック上下で遠近）',
+      '築山・窪み … 置いた後スティック上下で高さ／深さ',
+      '　上に木や石を置ける。動かす・消すは縁の白い棒（持ち手）を指す',
     ].forEach((line, i) => uiText(g, line, 60, 160 + i * 56, { size: 30, align: 'left', maxW: W - 120 }));
     back();
   }
@@ -3082,7 +3412,9 @@ function onSelectEnd(c){
   if(groundMode) return;
   if(measureMode){ c.userData.placeOnRelease = false; return; }
   if(grabbed && activeController === c){
+    const g = grabbed;
     grabbed = null;
+    if(isLandform(g)) resnapOnLand(); else markOnLand(g);
     scheduleSave();
     toast('設置しました');
     return;
@@ -3100,10 +3432,13 @@ function onSelectEnd(c){
       inst.position.copy(worldToPlaced(p));
       const cam = renderer.xr.getCamera();
       inst.rotation.y = Math.atan2(cam.position.x - p.x, cam.position.z - p.z) - anchorYaw();
+      if(isLandform(inst)) resnapOnLand(); else markOnLand(inst);
       updateCount();
       scheduleSave();
       const cp = renderer.xr.getCamera().position;
-      toast(`${m.name} を設置（${placedGroup.children.length}個目・${fmtLen(Math.hypot(p.x - cp.x, p.z - cp.z))}先）`);
+      toast(isLandform(inst)
+        ? `${m.name} を設置 — スティック上下で${m.landform.type === 'mound' ? '高さ' : '深さ'}・持ち手（白い棒）で移動`
+        : `${m.name} を設置（${placedGroup.children.length}個目・${fmtLen(Math.hypot(p.x - cp.x, p.z - cp.z))}先）`);
     }
   }
 }
@@ -3150,7 +3485,8 @@ function adjustSink(target, y, dt){
 }
 
 function pollThumbsticks(dt){
-  const target = grabbed || hovered;
+  // 築山・窪みは面を指しても選べない(地面扱い)ため、選択中ならそのまま高さを変えられるようにする
+  const target = grabbed || hovered || (isLandform(selectedObj) ? selectedObj : null);
   if(!target || !xrSession || uiDrag) return;   // 板を動かしている間のスティックは距離の調整に使う
   let changed = false;
   const beforeChange = () => {   // 連続入力の先頭でだけアンドゥ点を積む
@@ -3165,7 +3501,10 @@ function pollThumbsticks(dt){
     if(Math.abs(x) > 0.18){ beforeChange(); target.rotation.y -= x * 1.8 * dt; changed = true; }
     if(Math.abs(y) > 0.18){
       beforeChange();
-      if(scaleLocked){
+      if(isLandform(target) && scaleLocked){
+        // 上に倒す(y<0)=地表を上げる(築山は高く・窪みは浅く)
+        if(adjustLandHeight(target, -y * 0.3 * dt)) changed = true;
+      }else if(scaleLocked){
         // 上に倒す(y<0)=持ち上げる / 下に倒す=沈める
         if(adjustSink(target, y, dt)) changed = true;
       }else{
@@ -3182,6 +3521,7 @@ function pollThumbsticks(dt){
       }
     }
   }
+  if(changed && isLandform(target)) resnapOnLand();   // 回す・広げると上の物の高さも変わる
   if(changed) scheduleSave();
 }
 
@@ -3195,7 +3535,7 @@ let toastTimer = null;
 function refreshXRLabel(){
   const m = models[activeIndex];
   xrModelEl.textContent = m ? m.name : '—';
-  xrDimsEl.textContent  = m ? fmtDims(m.size) : '—';
+  xrDimsEl.textContent  = m ? modelDims(m) : '—';
   document.getElementById('xr-model-thumb').src = (m && m.thumb) || '';
   markUIDirty();
 }
@@ -3244,6 +3584,12 @@ function updateTargetInfo(){
   }
   const base = target.userData.baseSize;
   const s = target.scale.x;
+  if(isLandform(target)){   // 築山・窪み: 広さ・高さ(深さ)・土量
+    const [lw, ld] = landWD(LANDFORMS[target.userData.landform.kind], s);
+    const text = `${target.userData.modelName || ''}　${fmtLen(lw)} × ${fmtLen(ld)}・${landSummary(target)}`;
+    if(text !== lastTargetText){ lastTargetText = text; hudDirty = true; xrTargetEl.textContent = text; xrTargetEl.classList.add('on'); }
+    return;
+  }
   const dims = base ? fmtDims({ x: base.x * s, y: base.y * s, z: base.z * s }) : '';
   const h = base ? base.y * s : 0;
   const sink = target.userData.sink || 0;
@@ -3268,6 +3614,7 @@ xrTargetEl.addEventListener('click', () => {
     pushUndo();
     currentTarget.scale.setScalar(1);
     applyGrowth(currentTarget);
+    if(isLandform(currentTarget)) resnapOnLand();
     scheduleSave();
     toast('実寸（×1.00）に戻しました');
   }
@@ -3435,6 +3782,7 @@ function generateThumbs(){
       return;
     }
     const obj = m.template.clone(true);
+    obj.traverse(o => { if(o.userData.landHandle) o.visible = false; });   // 築山の持ち手は写さない
     sc.add(obj);
     const sphere = new THREE.Box3().setFromObject(obj).getBoundingSphere(new THREE.Sphere());
     const dist = sphere.radius / Math.sin(THREE.MathUtils.degToRad(cam.fov / 2)) * 1.02;
@@ -3479,7 +3827,7 @@ function refreshPalette(){
     b.classList.toggle('on', i === activeIndex);
     const w = modelWeight(m);
     b.innerHTML = `<img alt="" ${m.thumb ? `src="${m.thumb}"` : ''}><span class="pn">${escapeHtml(m.name)}</span>`
-                + `<span class="pd">高${fmtLen(m.size.y)}${w != null ? '・' + fmtWeight(w) : ''}</span>`;
+                + `<span class="pd">${modelHeightText(m)}${w != null ? '・' + fmtWeight(w) : ''}</span>`;
     b.addEventListener('click', () => {
       activeIndex = i;
       refreshXRLabel(); refreshLibraryUI();
@@ -3530,7 +3878,10 @@ function objAction(act){
   if(act === 'rotl' || act === 'rotr') o.rotation.y += (act === 'rotl' ? 1 : -1) * Math.PI / 12;
   if(act === 'down' || act === 'up'){
     const dir = act === 'down' ? 1 : -1;
-    if(scaleLocked){
+    if(isLandform(o) && scaleLocked){
+      adjustLandHeight(o, -dir * 0.05);   // 1回で5cm
+      toast(landSummary(o));
+    }else if(scaleLocked){
       sinkHoldUntil = 0;
       adjustSink(o, dir, 0.05 / SINK_SPEED);   // 1回で5cm(地表・1/3根入れでは止まる)
       const s = o.userData.sink || 0;
@@ -3544,6 +3895,7 @@ function objAction(act){
       toast(`×${s.toFixed(2)}`);
     }
   }
+  if(isLandform(o)) resnapOnLand();
   scheduleSave();
   markUIDirty();
 }
@@ -3643,6 +3995,7 @@ function applyGrowth(inst){
   const g = inst.children[0];
   if(!g || g.name !== 'growth') return;
   g.scale.setScalar(growthFactor(models.find(x => x.id === inst.userData.modelId), inst.scale.x));
+  applyLandform(inst);   // 横に拡縮しても築山の高さ(m)は変えない
 }
 function applyGrowthAll(){ placedGroup.children.forEach(applyGrowth); ghostGroup.children.forEach(applyGrowth); }
 function setGrowYears(y){
@@ -3873,6 +4226,10 @@ addModel('蹲踞（つくばい）', makeTsukubai(), { preset:true, kind:'andesi
 addModel('砂利敷き（2×2m）', makeGravel(), { preset:true, lift:0.006 });
 addModel('芝生（2m円）',  makeLawn(),    { preset:true, lift:0.005 });
 addModel('石灯籠',        makeLantern(), { preset:true, kind:'andesite' });
+/* 築山・窪み(窪みは縁が地表に来るよう、深さの分だけ下げて登録) */
+for(const d of Object.values(LANDFORMS)){
+  addModel(d.name, makeLandform(d), { preset:true, lift: d.type === 'hollow' ? -d.h : 0, category:'水・地面', landform: d });
+}
 updateLayoutStatus();
 applySun();
 rebuildTerrain();
@@ -3893,7 +4250,8 @@ if(new URLSearchParams(location.search).has('debug')){
                        anchorInfo: () => `${anchorState}${anchorRestored ? "(復元)" : ""}`, diag: () => diagnosticsText(),
                        uiPanel, openUIPanel, closeUIPanel, drawPanel, handleUIAction, uiHitFor,
                        setHudActive: (on) => { hudActive = on; hud.visible = on; hudSnap = true; markUIDirty(); },
-                       uiDragInfo: () => ({ dragging: !!uiDrag, hudPinned, panelPose: panelPose && panelPose.toArray() }) };
+                       uiDragInfo: () => ({ dragging: !!uiDrag, hudPinned, panelPose: panelPose && panelPose.toArray() }),
+                       LANDFORMS, landformOffset, resnapOnLand, adjustLandHeight, landVolume, landSummary, objectUnderRay, applyLayout, undo, objAction };
 }
 
 /* ================= メインループ ================= */
@@ -3916,9 +4274,11 @@ renderer.setAnimationLoop((t, frame) => {
     }
 
     let reticlePoint = null;
+    // 築山・窪みを置く/動かすときは、その面ではなく元の地面に向ける
+    const placingLand = !!(models[activeIndex] && models[activeIndex].landform);
     for(const c of controllers){
       if(!c.userData.inputSource) continue;
-      const p = floorPointFor(c, frame);
+      const p = floorPointFor(c, frame, { noLand: grabbed ? isLandform(grabbed) : placingLand });
       c.userData.lastFloorPoint = p;
       if(c.userData.uiHit) continue;   // UIを指している手の照準は出さない
       if(p && (c === activeController || !reticlePoint)) reticlePoint = p;
@@ -3928,6 +4288,7 @@ renderer.setAnimationLoop((t, frame) => {
       if(p){
         grabbed.position.copy(worldToPlaced(p));
         grabbed.position.y -= grabbed.userData.sink || 0;   // 根入れ深さを保ったまま移動
+        if(isLandform(grabbed)) resnapOnLand();   // 上に乗せた木や石も高さを合わせる
       }
       reticle.visible = false;
     }else if(reticlePoint && !hovered){
