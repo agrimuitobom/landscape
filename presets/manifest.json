@@ -49,6 +49,13 @@
       "kind": "andesite"
     },
     {
+      "id": "scan-keiseki-01",
+      "name": "景石",
+      "file": "keiseki_01.glb",
+      "credit": "自校スキャン（Scaniverse）",
+      "kind": "andesite"
+    },
+    {
       "id": "ph-tree-small-02",
       "name": "落葉樹（高木）",
       "file": "tree_small_02.glb",
