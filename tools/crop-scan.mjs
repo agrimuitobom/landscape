@@ -60,15 +60,22 @@ const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const norm = (a) => { const l = Math.hypot(...a) || 1; return a.map(x => x / l); };
-const sample = [];
-for (let i = 0; i < Math.min(20000, P.length); i++) sample.push(P[Math.floor(rand() * P.length)]);
+// 地面はスキャンのいちばん下にあるので、下から高さの15%以内の点だけを候補にする
+// (人や灯籠など背の高い物は地面の写り込みが少なく、体の面を地面と取り違えやすいため)
+let sample = [];
+for (let i = 0; i < Math.min(40000, P.length); i++) sample.push(P[Math.floor(rand() * P.length)]);
+{
+  const ys = sample.map(p => p[1]), lo = Math.min(...ys), hi = Math.max(...ys);
+  const low = sample.filter(p => p[1] < lo + (hi - lo) * 0.15);
+  if (low.length >= 50) sample = low;
+}
 const TOL = 0.012;
 let best = null;
 for (let it = 0; it < 400; it++) {
   const [a, b, c] = [0, 1, 2].map(() => sample[Math.floor(rand() * sample.length)]);
   let n = norm(cross(sub(b, a), sub(c, a)));
   if (n[1] < 0) n = n.map(x => -x);
-  if (n[1] < 0.8) continue;   // 37°より急な面は地面とみなさない
+  if (n[1] < 0.94) continue;   // 20°より急な面は地面とみなさない(スキャンアプリは上下の向きを記録している)
   const d = dot(n, a);
   let cnt = 0;
   for (const p of sample) if (Math.abs(dot(n, p) - d) < TOL) cnt++;

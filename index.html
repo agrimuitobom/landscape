@@ -433,7 +433,7 @@
       <tr><td>スティック 上下</td><td>⬍根入れモード（初期）: 下で沈める・上で持ち上げる。地表と「1/3根入れ」で一旦止まる<br>⤢拡縮モード: 大きさを変える（MR中の上部ボタンで切替）</td></tr>
       <tr><td>グリップ（物に向けて）</td><td>その物を削除</td></tr>
       <tr><td>A / B ボタン（右手）</td><td>設置する素材を次へ / 前へ切り替え</td></tr>
-      <tr><td>右スティック押し込み</td><td>スティック上下の役割を 根入れ ⇔ 大きさ で切り替え</td></tr>
+      <tr><td>右スティック押し込み</td><td>スティックの役割を 根入れ → 傾き → 大きさ の順に切り替え。傾きモードでは上下＝手前⇔奥、左右＝左右に傾ける（水平の所で一度止まります）</td></tr>
       <tr><td>X ボタン（左手）</td><td>タップ＝指している物（選択中の物）を複製／長押し＝全削除</td></tr>
       <tr><td>Y ボタン（左手）</td><td>タップ＝直前の操作を元に戻す／長押し＝MRを終了</td></tr>
       <tr><td>操作盤・パネル（Quest）</td><td>レーザーを当ててトリガー（手ならつまむ）。操作盤は視線の下に付いてきます</td></tr>
@@ -1993,6 +1993,7 @@ function makeInstance(m){
   inst.userData.modelName = m.name;
   inst.userData.baseSize = m.size;
   inst.userData.sink = 0;
+  inst.rotation.order = 'YXZ';   // y=向き(地面に対して回す)・x/z=傾き
   if(m.landform) inst.userData.landform = { kind: m.landform.id, h: m.landform.h };
   // 成長表示用の入れ子: 利用者の拡縮(inst.scale)とは別に、樹木の年数分の成長をここで掛ける
   const grow = new THREE.Group();
@@ -2230,6 +2231,7 @@ function serializeLayout(){
       name: o.userData.modelName,
       pos: [r(o.position.x), r(o.position.y), r(o.position.z)],
       rotY: r(o.rotation.y),
+      ...(Math.abs(o.rotation.x) + Math.abs(o.rotation.z) > 1e-4 ? { tilt: [r(o.rotation.x), r(o.rotation.z)] } : {}),   // 傾き
       scale: r(o.scale.x),
       sink: r(o.userData.sink || 0),
       ...(o.userData.landform ? { land: r(o.userData.landform.h) } : {})   // 築山の高さ・窪みの深さ
@@ -2257,7 +2259,7 @@ function instantiateFromItem(m, item){
   const inst = makeInstance(m);
   inst.userData.sink = Number(item.sink) || 0;
   inst.position.fromArray(item.pos);
-  inst.rotation.y = item.rotY || 0;
+  inst.rotation.set(Array.isArray(item.tilt) ? item.tilt[0] : 0, item.rotY || 0, Array.isArray(item.tilt) ? item.tilt[1] : 0, 'YXZ');
   inst.scale.setScalar(THREE.MathUtils.clamp(item.scale || 1, 0.05, 10));
   setLandHeightFromItem(inst, item);
   applyGrowth(inst);
@@ -2574,7 +2576,7 @@ function rebuildGhost(){
     const g = makeInstance(m);
     g.userData.sink = Number(item.sink) || 0;
     g.position.fromArray(item.pos);
-    g.rotation.y = item.rotY || 0;
+    g.rotation.set(Array.isArray(item.tilt) ? item.tilt[0] : 0, item.rotY || 0, Array.isArray(item.tilt) ? item.tilt[1] : 0, 'YXZ');
     g.scale.setScalar(item.scale || 1);
     setLandHeightFromItem(g, item);
     applyGrowth(g);
@@ -2855,7 +2857,8 @@ async function makeShareURL(){
   const plan = plans ? currentPlan() : { name: '配置', items: serializeLayout().items };
   const r = (v) => Math.round((Number(v) || 0) * 1000) / 1000;   // 1mm 単位
   const data = { v: 1, n: plan.name, i: plan.items.map(it =>
-    [it.id, r(it.pos[0]), r(it.pos[1]), r(it.pos[2]), r(it.rotY), r(it.scale || 1), r(it.sink), ...(it.land ? [r(it.land)] : [])]) };
+    [it.id, r(it.pos[0]), r(it.pos[1]), r(it.pos[2]), r(it.rotY), r(it.scale || 1), r(it.sink),
+     ...(it.land || it.tilt ? [it.land ? r(it.land) : null] : []), ...(it.tilt ? [r(it.tilt[0]), r(it.tilt[1])] : [])]) };
   const z = await deflateBytes(new TextEncoder().encode(JSON.stringify(data)));
   return `${location.origin}${location.pathname}#share=${b64url.enc(z)}`;
 }
@@ -2868,7 +2871,8 @@ async function importSharedFromHash(){
   let data;
   try{ data = JSON.parse(new TextDecoder().decode(await deflateBytes(b64url.dec(mm[1]), true))); }
   catch(err){ alert('共有リンクを読み取れませんでした（リンクが途中で切れていないか確認してください）'); return; }
-  const items = (data.i || []).map(a => ({ id: a[0], pos: [a[1], a[2], a[3]], rotY: a[4], scale: a[5], sink: a[6], ...(a[7] != null ? { land: a[7] } : {}) }));
+  const items = (data.i || []).map(a => ({ id: a[0], pos: [a[1], a[2], a[3]], rotY: a[4], scale: a[5], sink: a[6],
+    ...(a[7] != null ? { land: a[7] } : {}), ...(a[8] != null ? { tilt: [a[8], a[9] || 0] } : {}) }));
   const cur = currentPlan();
   if(cur.items.length){
     if(plans.list.length < PLAN_IDS.length) newPlan({ copy: false });
@@ -3206,7 +3210,7 @@ function duplicateTarget(t = grabbed || hovered || selectedObj){
 
 /* ---------- コントローラーのボタン ----------
    Quest では画面上のボタン(dom-overlay)が使えないため、主な操作をボタンに割り当てる。
-   右A/B=素材の次/前・右スティック押し込み=根入れ⇔拡縮
+   右A/B=素材の次/前・右スティック押し込み=根入れ→傾き→拡縮
    左X=タップで複製/長押しで全削除・左Y=タップで元に戻す/長押しでMR終了 */
 const HOLD_MS = 1200;
 const btnState = new Map();   // XRInputSource -> 押下状態
@@ -3240,7 +3244,7 @@ function pollButtons(){
 /* ================= XR内の3D UI(dom-overlay 非対応ブラウザ = Meta Quest 用) =================
    Quest のブラウザは画面上のHTMLボタン(dom-overlay)を出せないため、MR空間に浮かぶ板にボタンを描き、
    コントローラーのレーザー(手ならつまむ操作)で押せるようにする。
-   - HUD: 視線の下に付いてくる操作盤。素材の切替・メニュー・根入れ⇔大きさ・戻す、選択中の物の操作
+   - HUD: 視線の下に付いてくる操作盤。素材の切替・メニュー・根入れ/傾き/大きさ・戻す、選択中の物の操作
    - パネル: 目の前に固定して開く。素材パレット・メニュー・季節・地面・案・ヘルプ */
 const UI_FONT = '"Zen Kaku Gothic New", sans-serif';
 let hudActive = false, hudSnap = false, hudDirty = true, panelDirty = true;
@@ -3358,7 +3362,7 @@ function drawHUD(){
   const bw = (W - 16 * 5) / 4;
   uiButton(hud, g, 16,                 G + 190, bw, 84, '素材を選ぶ', 'hud:palette', { on: uiPanelName === 'palette' });
   uiButton(hud, g, 16 + (bw + 16),     G + 190, bw, 84, '☰ メニュー', 'hud:menu', { on: !!uiPanelName && uiPanelName !== 'palette' });
-  uiButton(hud, g, 16 + (bw + 16) * 2, G + 190, bw, 84, scaleLocked ? '上下＝根入れ' : '上下＝大きさ', 'hud:stick');
+  uiButton(hud, g, 16 + (bw + 16) * 2, G + 190, bw, 84, STICK_LABEL[stickMode], 'hud:stick', { on: stickMode === 'tilt' });
   uiButton(hud, g, 16 + (bw + 16) * 3, G + 190, bw, 84, '↶ 戻す', 'hud:undo');
 
   let y = G + 304;
@@ -3366,8 +3370,10 @@ function drawHUD(){
     g.fillStyle = 'rgba(35,39,31,0.86)';
     roundRectPath(g, 0, y, W, 100, 30); g.fill();
     hud.userData.solid.push([0, y, W, 100]);
-    const acts = [['↺15°', 'obj:rotl'], ['↻15°', 'obj:rotr'], [scaleLocked ? '▼5cm' : '縮小', 'obj:down'], [scaleLocked ? '▲5cm' : '拡大', 'obj:up'],
-                  ['複製', 'obj:dup'], ['削除', 'obj:del'], ['✕', 'obj:desel']];
+    const acts = stickMode === 'tilt'
+      ? [['◁傾け', 'obj:tl'], ['傾け▷', 'obj:tr'], ['手前へ', 'obj:tb'], ['奥へ', 'obj:tf'], ['水平に', 'obj:level'], ['削除', 'obj:del'], ['✕', 'obj:desel']]
+      : [['↺15°', 'obj:rotl'], ['↻15°', 'obj:rotr'], [stickMode === 'sink' ? '▼5cm' : '縮小', 'obj:down'], [stickMode === 'sink' ? '▲5cm' : '拡大', 'obj:up'],
+         ['複製', 'obj:dup'], ['削除', 'obj:del'], ['✕', 'obj:desel']];
     const ow = (W - 16 * (acts.length + 1)) / acts.length;
     acts.forEach(([label, act], i) => uiButton(hud, g, 16 + i * (ow + 16), y + 12, ow, 76, label, act, { size: 28, warn: act === 'obj:del' }));
     y += 112;
@@ -3492,7 +3498,7 @@ function drawPanel(){
       'グリップ（物に向けて）… 削除',
       'スティック左右 … 回転　／　上下 … 根入れ（または大きさ）',
       '右 A / B … 素材を次 / 前へ',
-      '右スティック押し込み … 上下＝根入れ ⇔ 大きさ',
+      '右スティック押し込み … 根入れ → 傾き → 大きさ',
       '左 X … 複製（長押しで全削除）',
       '左 Y … 元に戻す（長押しでMR終了）',
       '手で操作 … 親指と人差し指でつまむ＝トリガー',
@@ -3775,9 +3781,47 @@ function onSqueeze(c){
   }
 }
 
-/* スティック: 左右=回転 / 上下=根入れ(実寸ロック中・初期) または 大きさ(ロック解除中) */
-let scaleLocked = true;
+/* スティックの役割(右スティック押し込みで切替)
+   sink=根入れ(初期): 左右=回転・上下=根入れ / tilt=傾き: 上下=手前⇔奥・左右=左右に傾ける / scale=大きさ: 左右=回転・上下=拡縮 */
+const STICK_MODES = ['sink', 'tilt', 'scale'];
+const STICK_LABEL = { sink: '上下＝根入れ', tilt: '⟋ 傾き', scale: '上下＝大きさ' };
+let stickMode = 'sink';
 let lastStickChangeAt = 0;
+
+/* 傾ける(石を斜めに据える・立石を少し倒す等)。見ている向きが基準: fwd>0 で上部が奥へ、side>0 で右へ(ラジアン)。
+   底の中心を軸に回るので、傾けた側は地面に潜って根入れのように見える。水平に戻る所では一旦止める */
+const TILT_SPEED = Math.PI / 6;   // 30°/秒(スティック全倒し)
+const TILT_MAX = THREE.MathUtils.degToRad(90);
+let tiltHoldUntil = 0;
+const _tq = new THREE.Quaternion(), _tq2 = new THREE.Quaternion(), _tv = new THREE.Vector3(), _ta = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+function tiltAngle(o){ return _tv.set(0, 1, 0).applyQuaternion(o.quaternion).angleTo(_up); }
+function tiltObject(o, side, fwd){
+  if(isLandform(o)){ toast('築山・窪みは傾けられません'); return false; }
+  const now = performance.now();
+  if(now < tiltHoldUntil) return false;
+  // 見ている水平方向(設置物の座標系)
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  const v = new THREE.Vector3(0, 0, -1).transformDirection(cam.matrixWorld);
+  v.applyQuaternion(placedGroup.getWorldQuaternion(_tq2).invert()).setY(0);
+  if(v.lengthSq() < 1e-6) v.set(0, 0, -1);
+  v.normalize();
+  const before = tiltAngle(o), q0 = o.quaternion.clone();
+  if(fwd) o.quaternion.premultiply(_tq.setFromAxisAngle(_ta.set(v.z, 0, -v.x), fwd));    // 軸 = 上 × 視線
+  if(side) o.quaternion.premultiply(_tq.setFromAxisAngle(_ta.set(v.x, 0, v.z), side));   // 軸 = 上 × 右
+  const after = tiltAngle(o);
+  if(after > TILT_MAX){ o.quaternion.copy(q0); return false; }
+  if(before > 0.017 && after <= 0.017){   // 水平(1°以内)を通るときは水平にそろえて少し止める
+    levelObject(o);
+    tiltHoldUntil = now + 450;
+    toast('水平');
+  }
+  return true;
+}
+function levelObject(o){ o.rotation.set(0, o.rotation.y, 0, 'YXZ'); }
+function fmtTilt(o){
+  const deg = Math.round(THREE.MathUtils.radToDeg(tiltAngle(o)));
+  return deg ? `傾き${deg}°` : '';
+}
 let sinkHoldUntil = 0;
 const SINK_SPEED = 0.15;   // m/秒(スティック全倒し)
 
@@ -3816,13 +3860,18 @@ function pollThumbsticks(dt){
     const gp = src.gamepad;
     if(!gp || gp.axes.length < 4) continue;
     const x = gp.axes[2], y = gp.axes[3];
+    if(stickMode === 'tilt' && !isLandform(target)){
+      const sx = Math.abs(x) > 0.18 ? x : 0, sy = Math.abs(y) > 0.18 ? y : 0;
+      if(sx || sy){ beforeChange(); if(tiltObject(target, sx * TILT_SPEED * dt, -sy * TILT_SPEED * dt)) changed = true; }
+      continue;
+    }
     if(Math.abs(x) > 0.18){ beforeChange(); target.rotation.y -= x * 1.8 * dt; changed = true; }
     if(Math.abs(y) > 0.18){
       beforeChange();
-      if(isLandform(target) && scaleLocked){
+      if(isLandform(target) && stickMode !== 'scale'){
         // 上に倒す(y<0)=地表を上げる(築山は高く・窪みは浅く)
         if(adjustLandHeight(target, -y * 0.3 * dt)) changed = true;
-      }else if(scaleLocked){
+      }else if(stickMode !== 'scale'){
         // 上に倒す(y<0)=持ち上げる / 下に倒す=沈める
         if(adjustSink(target, y, dt)) changed = true;
       }else{
@@ -3872,18 +3921,20 @@ function updateCount(){
   markUIDirty();
 }
 
-/* スティック上下の役割切替: 根入れ(実寸ロック) / 拡縮 */
+/* スティックの役割切替: 根入れ → 傾き → 大きさ */
 const lockBtn = document.getElementById('xr-lock');
 function refreshLockBtn(){
-  lockBtn.textContent = scaleLocked ? '⬍根入れ' : '⤢拡縮';
-  lockBtn.classList.toggle('unlocked', !scaleLocked);
+  lockBtn.textContent = { sink: '⬍根入れ', tilt: '⟋傾き', scale: '⤢拡縮' }[stickMode];
+  lockBtn.classList.toggle('unlocked', stickMode !== 'sink');
 }
 function toggleStickMode(){
-  scaleLocked = !scaleLocked;
+  stickMode = STICK_MODES[(STICK_MODES.indexOf(stickMode) + 1) % STICK_MODES.length];
   refreshLockBtn();
   refreshObjBar();
   hudDirty = true;
-  toast(scaleLocked ? 'スティック上下＝根入れ（大きさは実寸で固定）' : 'スティック上下＝大きさ（実寸ロック解除）');
+  toast({ sink: 'スティック上下＝根入れ（大きさは実寸で固定）',
+          tilt: 'スティック＝傾き（上下＝手前⇔奥・左右＝左右に傾ける）',
+          scale: 'スティック上下＝大きさ（実寸ロック解除）' }[stickMode]);
 }
 lockBtn.addEventListener('click', toggleStickMode);
 refreshLockBtn();
@@ -3919,7 +3970,8 @@ function updateTargetInfo(){
   const tm = models.find(x => x.id === target.userData.modelId);
   const gf = growthFactor(tm, s);
   const growNote = gf > 1.001 ? `　${fmtYears(sunState.years)}の目安 高${fmtLen(h * gf)}・幅${fmtLen(Math.max(base.x, base.z) * s * gf)}` : '';
-  const text = `${target.userData.modelName || ''}　${dims}${growNote}${sinkNote}${weightNote}${scaleNote}`;
+  const tiltNote = fmtTilt(target) ? `　${fmtTilt(target)}` : '';
+  const text = `${target.userData.modelName || ''}　${dims}${growNote}${sinkNote}${tiltNote}${weightNote}${scaleNote}`;
   if(text !== lastTargetText){
     lastTargetText = text;
     hudDirty = true;
@@ -4168,8 +4220,12 @@ function setSelected(o){
 function refreshObjBar(){
   const show = renderer.xr.isPresenting && !!selectedObj;
   objBar.classList.toggle('on', show);
-  document.getElementById('xr-obj-down').textContent = scaleLocked ? '▼ 5cm' : '縮小';
-  document.getElementById('xr-obj-up').textContent = scaleLocked ? '▲ 5cm' : '拡大';
+  const tilt = stickMode === 'tilt';
+  document.getElementById('xr-obj-down').textContent = tilt ? '手前へ' : stickMode === 'sink' ? '▼ 5cm' : '縮小';
+  document.getElementById('xr-obj-up').textContent = tilt ? '奥へ' : stickMode === 'sink' ? '▲ 5cm' : '拡大';
+  objBar.querySelector('[data-o="rotl"]').textContent = tilt ? '◁ 傾け' : '↺ 15°';
+  objBar.querySelector('[data-o="rotr"]').textContent = tilt ? '傾け ▷' : '↻ 15°';
+  objBar.querySelector('[data-o="dup"]').textContent = tilt ? '水平に' : '複製';
   document.getElementById('xr-obj-name').textContent = selectedObj ? (selectedObj.userData.modelName || '') : '';
   markUIDirty();
 }
@@ -4181,7 +4237,20 @@ objBar.addEventListener('click', (e) => {
 function objAction(act){
   const o = selectedObj;
   if(!o) return;
+  // 傾きモードでは画面下のバーの回転・上下・複製ボタンが傾きの操作になる
+  if(stickMode === 'tilt') act = { rotl: 'tl', rotr: 'tr', down: 'tb', up: 'tf', dup: 'level' }[act] || act;
   if(act === 'desel'){ setSelected(null); return; }
+  if(['tl', 'tr', 'tb', 'tf', 'level'].includes(act)){
+    if(isLandform(o)){ toast('築山・窪みは傾けられません'); return; }
+    pushUndo();
+    const d = THREE.MathUtils.degToRad(5);   // 1回で5°
+    tiltHoldUntil = 0;
+    if(act === 'level') levelObject(o);
+    else tiltObject(o, act === 'tr' ? d : act === 'tl' ? -d : 0, act === 'tf' ? d : act === 'tb' ? -d : 0);
+    toast(fmtTilt(o) || '水平');
+    scheduleSave(); markUIDirty();
+    return;
+  }
   if(act === 'dup'){ duplicateTarget(o); return; }
   if(act === 'del'){
     pushUndo();
@@ -4196,10 +4265,10 @@ function objAction(act){
   if(act === 'rotl' || act === 'rotr') o.rotation.y += (act === 'rotl' ? 1 : -1) * Math.PI / 12;
   if(act === 'down' || act === 'up'){
     const dir = act === 'down' ? 1 : -1;
-    if(isLandform(o) && scaleLocked){
+    if(isLandform(o) && stickMode !== 'scale'){
       adjustLandHeight(o, -dir * 0.05);   // 1回で5cm
       toast(landSummary(o));
-    }else if(scaleLocked){
+    }else if(stickMode !== 'scale'){
       sinkHoldUntil = 0;
       adjustSink(o, dir, 0.05 / SINK_SPEED);   // 1回で5cm(地表・1/3根入れでは止まる)
       const s = o.userData.sink || 0;
@@ -4571,7 +4640,7 @@ if(new URLSearchParams(location.search).has('debug')){
                        setHudActive: (on) => { hudActive = on; hud.visible = on; hudSnap = true; markUIDirty(); },
                        uiDragInfo: () => ({ dragging: !!uiDrag, hudPinned, panelPose: panelPose && panelPose.toArray() }),
                        LANDFORMS, landformOffset, resnapOnLand, adjustLandHeight, landVolume, landSummary, objectUnderRay, applyLayout, undo, objAction,
-                       makeShareURL, buildARUSDZ, arQuickLook };
+                       makeShareURL, buildARUSDZ, arQuickLook, tiltObject, getStickMode: () => stickMode };
 }
 
 /* ================= メインループ ================= */
